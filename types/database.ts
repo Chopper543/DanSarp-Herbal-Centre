@@ -222,6 +222,44 @@ export interface Database {
           updated_at?: string;
         };
       };
+      branches: {
+        Row: {
+          id: string;
+          name: string;
+          address: string;
+          phone: string;
+          email: string;
+          coordinates: string | { x: number; y: number } | { lat: number; lng: number };
+          working_hours: Json;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          address: string;
+          phone: string;
+          email: string;
+          coordinates: string | { x: number; y: number } | { lat: number; lng: number };
+          working_hours: Json;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          address?: string;
+          phone?: string;
+          email?: string;
+          coordinates?: string | { x: number; y: number } | { lat: number; lng: number };
+          working_hours?: Json;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };

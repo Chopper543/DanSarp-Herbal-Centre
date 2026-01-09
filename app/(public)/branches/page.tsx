@@ -6,11 +6,22 @@ import Link from "next/link";
 export default async function BranchesPage() {
   const supabase = await createClient();
   
+  // @ts-ignore - Supabase type inference issue with branches table
   const { data: branches } = await supabase
     .from("branches")
     .select("*")
     .eq("is_active", true)
     .order("name", { ascending: true });
+  
+  const typedBranches = (branches as Array<{
+    id: string;
+    name: string;
+    address: string;
+    phone: string;
+    email: string;
+    coordinates: { lat: number; lng: number } | { x: number; y: number } | string | null;
+    working_hours: Record<string, any> | null;
+  }> | null) || [];
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -28,8 +39,17 @@ export default async function BranchesPage() {
           </ScrollReveal>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {branches?.map((branch, index) => {
-              const coordinates = branch.coordinates as { lat: number; lng: number } | null;
+            {typedBranches.map((branch, index) => {
+              // Handle coordinates - PostgreSQL POINT can be returned as {x, y} or {lat, lng}
+              let coordinates: { lat: number; lng: number } | null = null;
+              if (branch.coordinates) {
+                if (typeof branch.coordinates === 'object' && 'x' in branch.coordinates && 'y' in branch.coordinates) {
+                  // PostgreSQL POINT format: {x: lng, y: lat}
+                  coordinates = { lat: (branch.coordinates as { x: number; y: number }).y, lng: (branch.coordinates as { x: number; y: number }).x };
+                } else if (typeof branch.coordinates === 'object' && 'lat' in branch.coordinates && 'lng' in branch.coordinates) {
+                  coordinates = branch.coordinates as { lat: number; lng: number };
+                }
+              }
               const workingHours = branch.working_hours as Record<string, any> | null;
               
               return (
