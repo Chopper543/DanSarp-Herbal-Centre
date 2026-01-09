@@ -77,7 +77,7 @@ export function HeroSection() {
                 >
                   <span className="relative z-10">Book Appointment</span>
                   <span className="absolute inset-0 bg-primary-700 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300" />
-                </Link>
+                </Button>
               </Link>
               
               <Link href="/treatments">

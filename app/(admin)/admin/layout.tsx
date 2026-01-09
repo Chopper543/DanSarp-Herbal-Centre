@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
 
 export default function AdminLayout({
   children,

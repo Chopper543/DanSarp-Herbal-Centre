@@ -2,9 +2,7 @@ import { Navbar } from "@/components/features/Navbar";
 import { ScrollReveal } from "@/components/animations/ScrollReveal";
 import { createClient } from "@/lib/supabase/server";
 import Image from "next/image";
-import dynamic from "next/dynamic";
-
-const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
+import { VideoPlayer } from "@/components/features/VideoPlayer";
 
 export default async function TestimonialsPage() {
   const supabase = await createClient();
@@ -46,14 +44,7 @@ export default async function TestimonialsPage() {
                   )}
                   
                   {testimonial.media_type === "video" && (
-                    <div className="mb-4 rounded-lg overflow-hidden">
-                      <ReactPlayer
-                        url={testimonial.media_url}
-                        width="100%"
-                        height="200px"
-                        controls
-                      />
-                    </div>
+                    <VideoPlayer url={testimonial.media_url} />
                   )}
                   
                   {testimonial.media_type === "audio" && (
