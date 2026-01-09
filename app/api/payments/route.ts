@@ -31,11 +31,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user email for payment
+    // @ts-ignore - Supabase type inference issue with users table
     const { data: userData } = await supabase
       .from("users")
       .select("email, full_name")
       .eq("id", user.id)
       .single();
+    
+    const typedUserData = userData as { email: string; full_name: string | null } | null;
 
     // Process payment
     const paymentResponse = await paymentService.processPayment(selectedProvider, {
@@ -45,8 +48,8 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       appointment_id,
       metadata: {
-        email: userData?.email,
-        name: userData?.full_name,
+        email: typedUserData?.email,
+        name: typedUserData?.full_name,
       },
     });
 

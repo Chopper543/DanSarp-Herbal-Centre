@@ -37,27 +37,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user details for notifications
+    // @ts-ignore - Supabase type inference issue with users table
     const { data: userData } = await supabase
       .from("users")
       .select("email, phone")
       .eq("id", user.id)
       .single();
+    
+    const typedUserData = userData as { email: string; phone: string | null } | null;
 
     // Get branch details
+    // @ts-ignore - Supabase type inference issue with branches table
     const { data: branch } = await supabase
       .from("branches")
       .select("name")
       .eq("id", branch_id)
       .single();
+    
+    const typedBranch = branch as { name: string } | null;
 
     // Send email confirmation
-    if (userData?.email) {
+    if (typedUserData?.email) {
       try {
-        await sendAppointmentConfirmation(userData.email, {
+        await sendAppointmentConfirmation(typedUserData.email, {
           date: new Date(appointment_date).toLocaleDateString(),
           time: new Date(appointment_date).toLocaleTimeString(),
           treatment: treatment_type,
-          branch: branch?.name || "Main Branch",
+          branch: typedBranch?.name || "Main Branch",
         });
       } catch (emailError) {
         console.error("Failed to send email:", emailError);
@@ -65,9 +71,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Send WhatsApp notification if phone number exists
-    if (userData?.phone) {
+    if (typedUserData?.phone) {
       try {
-        await sendAppointmentReminder(userData.phone, {
+        await sendAppointmentReminder(typedUserData.phone, {
           date: new Date(appointment_date).toLocaleDateString(),
           time: new Date(appointment_date).toLocaleTimeString(),
           treatment: treatment_type,
@@ -97,12 +103,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const isAdmin = searchParams.get("admin") === "true";
 
+    // @ts-ignore - Supabase type inference issue with appointments table
     let query = supabase.from("appointments").select("*");
 
     if (!isAdmin) {
       query = query.eq("user_id", user.id);
     }
 
+    // @ts-ignore - Supabase type inference issue with appointments table
     const { data: appointments, error } = await query.order("appointment_date", {
       ascending: false,
     });
