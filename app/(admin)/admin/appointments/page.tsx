@@ -20,10 +20,10 @@ export default function AdminAppointmentsPage() {
     fetchAppointments();
   }, []);
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled") => {
     const { error } = await supabase
       .from("appointments")
-      .update({ status })
+      .update({ status: status as "pending" | "confirmed" | "completed" | "cancelled" })
       .eq("id", id);
 
     if (!error) {
@@ -92,7 +92,10 @@ export default function AdminAppointmentsPage() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <select
                     value={appointment.status}
-                    onChange={(e) => updateStatus(appointment.id, e.target.value)}
+                    onChange={(e) => {
+                      const newStatus = e.target.value as "pending" | "confirmed" | "completed" | "cancelled";
+                      updateStatus(appointment.id, newStatus);
+                    }}
                     className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
                   >
                     <option value="pending">Pending</option>
