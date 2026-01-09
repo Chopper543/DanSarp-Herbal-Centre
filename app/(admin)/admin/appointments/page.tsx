@@ -23,7 +23,7 @@ export default function AdminAppointmentsPage() {
   const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled") => {
     const { error } = await supabase
       .from("appointments")
-      .update({ status: status as "pending" | "confirmed" | "completed" | "cancelled" })
+      .update({ status })
       .eq("id", id);
 
     if (!error) {

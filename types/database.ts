@@ -70,6 +70,41 @@ export interface Database {
           updated_at?: string;
         };
       };
+      appointments: {
+        Row: {
+          id: string;
+          user_id: string;
+          branch_id: string;
+          appointment_date: string;
+          status: "pending" | "confirmed" | "completed" | "cancelled";
+          treatment_type: string;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          branch_id: string;
+          appointment_date: string;
+          status?: "pending" | "confirmed" | "completed" | "cancelled";
+          treatment_type: string;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          branch_id?: string;
+          appointment_date?: string;
+          status?: "pending" | "confirmed" | "completed" | "cancelled";
+          treatment_type?: string;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };
