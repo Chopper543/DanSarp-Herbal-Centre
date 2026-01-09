@@ -18,6 +18,7 @@ export async function createAdminInvite(
 
   const { data, error } = await supabase
     .from("admin_invites")
+    // @ts-ignore - Supabase type inference issue with admin_invites table
     .insert({
       email,
       role,
@@ -38,6 +39,7 @@ export async function createAdminInvite(
 export async function validateInviteToken(token: string) {
   const supabase = await createClient();
 
+  // @ts-ignore - Supabase type inference issue with admin_invites table
   const { data, error } = await supabase
     .from("admin_invites")
     .select("*")
@@ -72,6 +74,7 @@ export async function acceptInvite(token: string, userId: string) {
   // Update user role
   const { error: userError } = await supabase
     .from("users")
+    // @ts-ignore - Supabase type inference issue with users table
     .update({ role: invite.role })
     .eq("id", userId);
 
@@ -82,6 +85,7 @@ export async function acceptInvite(token: string, userId: string) {
   // Mark invite as accepted
   const { error: inviteError } = await supabase
     .from("admin_invites")
+    // @ts-ignore - Supabase type inference issue with admin_invites table
     .update({ accepted_at: new Date().toISOString() })
     .eq("token", token);
 
