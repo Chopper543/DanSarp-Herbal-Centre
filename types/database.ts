@@ -149,6 +149,38 @@ export interface Database {
           updated_at?: string;
         };
       };
+      organization_profile: {
+        Row: {
+          id: string;
+          mission: string;
+          vision: string;
+          values: string;
+          team_members: Json;
+          certifications: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          mission: string;
+          vision: string;
+          values: string;
+          team_members?: Json;
+          certifications?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          mission?: string;
+          vision?: string;
+          values?: string;
+          team_members?: Json;
+          certifications?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };
