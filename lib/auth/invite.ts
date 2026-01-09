@@ -33,7 +33,22 @@ export async function createAdminInvite(
     throw new Error(`Failed to create invite: ${error.message}`);
   }
 
-  return { ...data, inviteUrl: `${process.env.NEXT_PUBLIC_APP_URL}/admin/invite/${token}` };
+  const typedData = data as {
+    id: string;
+    email: string;
+    role: string;
+    token: string;
+    invited_by: string;
+    expires_at: string;
+    accepted_at: string | null;
+    created_at: string;
+  } | null;
+
+  if (!typedData) {
+    throw new Error("Failed to create invite: No data returned");
+  }
+
+  return { ...typedData, inviteUrl: `${process.env.NEXT_PUBLIC_APP_URL}/admin/invite/${token}` };
 }
 
 export async function validateInviteToken(token: string) {
@@ -50,17 +65,32 @@ export async function validateInviteToken(token: string) {
     return null;
   }
 
+  const typedData = data as {
+    id: string;
+    email: string;
+    role: string;
+    token: string;
+    invited_by: string;
+    expires_at: string;
+    accepted_at: string | null;
+    created_at: string;
+  } | null;
+
+  if (!typedData) {
+    return null;
+  }
+
   // Check if expired
-  if (new Date(data.expires_at) < new Date()) {
+  if (new Date(typedData.expires_at) < new Date()) {
     return null;
   }
 
   // Check if already accepted
-  if (data.accepted_at) {
+  if (typedData.accepted_at) {
     return null;
   }
 
-  return data;
+  return typedData;
 }
 
 export async function acceptInvite(token: string, userId: string) {
