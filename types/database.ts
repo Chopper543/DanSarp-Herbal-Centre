@@ -105,6 +105,50 @@ export interface Database {
           updated_at?: string;
         };
       };
+      payments: {
+        Row: {
+          id: string;
+          user_id: string;
+          appointment_id: string | null;
+          amount: number;
+          currency: string;
+          payment_method: string;
+          status: "pending" | "processing" | "completed" | "failed" | "refunded";
+          provider: string;
+          provider_transaction_id: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          appointment_id?: string | null;
+          amount: number;
+          currency?: string;
+          payment_method: string;
+          status?: "pending" | "processing" | "completed" | "failed" | "refunded";
+          provider: string;
+          provider_transaction_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          appointment_id?: string | null;
+          amount?: number;
+          currency?: string;
+          payment_method?: string;
+          status?: "pending" | "processing" | "completed" | "failed" | "refunded";
+          provider?: string;
+          provider_transaction_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };
