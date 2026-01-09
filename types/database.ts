@@ -181,6 +181,47 @@ export interface Database {
           updated_at?: string;
         };
       };
+      blog_posts: {
+        Row: {
+          id: string;
+          title: string;
+          slug: string;
+          excerpt: string;
+          content: string;
+          author_id: string;
+          featured_image_url: string | null;
+          status: "draft" | "published";
+          published_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          slug: string;
+          excerpt: string;
+          content: string;
+          author_id: string;
+          featured_image_url?: string | null;
+          status?: "draft" | "published";
+          published_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          slug?: string;
+          excerpt?: string;
+          content?: string;
+          author_id?: string;
+          featured_image_url?: string | null;
+          status?: "draft" | "published";
+          published_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };

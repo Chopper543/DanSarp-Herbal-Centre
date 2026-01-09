@@ -7,11 +7,21 @@ import Image from "next/image";
 export default async function BlogPage() {
   const supabase = await createClient();
   
+  // @ts-ignore - Supabase type inference issue with blog_posts table
   const { data: posts } = await supabase
     .from("blog_posts")
     .select("*")
     .eq("status", "published")
     .order("published_at", { ascending: false });
+  
+  const typedPosts = (posts as Array<{
+    id: string;
+    title: string;
+    slug: string;
+    excerpt: string;
+    featured_image_url: string | null;
+    published_at: string | null;
+  }> | null) || [];
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -29,7 +39,7 @@ export default async function BlogPage() {
           </ScrollReveal>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {posts?.map((post, index) => (
+            {typedPosts.map((post, index) => (
               <ScrollReveal key={post.id} delay={index * 0.1}>
                 <Link href={`/blog/${post.slug}`}>
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
