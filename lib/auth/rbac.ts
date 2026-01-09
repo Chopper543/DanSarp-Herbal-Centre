@@ -9,13 +9,15 @@ export async function getUserRole(): Promise<UserRole | null> {
 
   if (!user) return null;
 
+  // @ts-ignore - Supabase type inference issue with users table
   const { data } = await supabase
     .from("users")
     .select("role")
     .eq("id", user.id)
     .single();
 
-  return (data?.role as UserRole) || null;
+  const typedData = data as { role: string } | null;
+  return (typedData?.role as UserRole) || null;
 }
 
 export function hasRole(userRole: UserRole | null, requiredRoles: UserRole[]): boolean {
