@@ -27,6 +27,7 @@ export default function AdminUsersPage() {
   const updateRole = async (id: string, role: string) => {
     const { error } = await supabase
       .from("users")
+      // @ts-ignore - Supabase type inference issue with users table
       .update({ role })
       .eq("id", id);
 
