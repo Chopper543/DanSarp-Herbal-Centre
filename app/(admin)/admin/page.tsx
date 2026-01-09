@@ -21,7 +21,8 @@ export default function AdminDashboard() {
         supabase.from("payments").select("id, amount", { count: "exact" }),
       ]);
 
-      const revenue = paymentsRes.data
+      // @ts-ignore - Supabase type inference issue with payments table
+      const revenue = (paymentsRes.data as Array<{ amount: number }> | null)
         ?.filter((p) => p.amount)
         .reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0) || 0;
 
