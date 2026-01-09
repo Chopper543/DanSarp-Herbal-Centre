@@ -13,9 +13,9 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
 
     // Insert or update subscriber
-    // @ts-ignore - Supabase type inference issue with newsletter_subscribers table
     const { error } = await supabase
       .from("newsletter_subscribers")
+      // @ts-ignore - Supabase type inference issue with newsletter_subscribers table
       .upsert(
         {
           email,
@@ -48,9 +48,9 @@ export async function DELETE(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // @ts-ignore - Supabase type inference issue with newsletter_subscribers table
     const { error } = await supabase
       .from("newsletter_subscribers")
+      // @ts-ignore - Supabase type inference issue with newsletter_subscribers table
       .update({ is_active: false })
       .eq("email", email);
 
