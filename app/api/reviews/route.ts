@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid rating" }, { status: 400 });
     }
 
+    // @ts-ignore - Supabase type inference issue with reviews table
     const { data: review, error } = await supabase
       .from("reviews")
       .insert({

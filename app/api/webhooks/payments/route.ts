@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       );
 
       // Update payment status
+      // @ts-ignore - Supabase type inference issue with payments table
       await supabase
         .from("payments")
         .update({
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
       );
 
       // Update payment status
+      // @ts-ignore - Supabase type inference issue with payments table
       await supabase
         .from("payments")
         .update({

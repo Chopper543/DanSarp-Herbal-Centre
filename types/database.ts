@@ -403,6 +403,26 @@ export interface Database {
           updated_at?: string;
         };
       };
+      newsletter_subscribers: {
+        Row: {
+          id: string;
+          email: string;
+          is_active: boolean;
+          subscribed_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          is_active?: boolean;
+          subscribed_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          is_active?: boolean;
+          subscribed_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };

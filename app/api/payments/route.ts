@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Create payment record
+    // @ts-ignore - Supabase type inference issue with payments table
     const { data: payment, error } = await supabase
       .from("payments")
       .insert({
