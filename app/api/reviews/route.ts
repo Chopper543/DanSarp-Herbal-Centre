@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid rating" }, { status: 400 });
     }
 
-    // @ts-ignore - Supabase type inference issue with reviews table
     const { data: review, error } = await supabase
       .from("reviews")
+      // @ts-ignore - Supabase type inference issue with reviews table
       .insert({
         user_id: user.id,
         rating,
@@ -48,12 +48,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const approvedOnly = searchParams.get("approved") !== "false";
 
+    // @ts-ignore - Supabase type inference issue with reviews table
     let query = supabase.from("reviews").select("*, user:users(full_name)");
 
     if (approvedOnly) {
       query = query.eq("is_approved", true);
     }
 
+    // @ts-ignore - Supabase type inference issue with reviews table
     const { data: reviews, error } = await query.order("created_at", {
       ascending: false,
     });
