@@ -6,11 +6,20 @@ import Link from "next/link";
 export default async function TreatmentsPage() {
   const supabase = await createClient();
   
+  // @ts-ignore - Supabase type inference issue with treatments table
   const { data: treatments } = await supabase
     .from("treatments")
     .select("*")
     .eq("is_active", true)
     .order("name", { ascending: true });
+  
+  const typedTreatments = (treatments as Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    pricing: any;
+  }> | null) || [];
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -28,7 +37,7 @@ export default async function TreatmentsPage() {
           </ScrollReveal>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {treatments?.map((treatment, index) => {
+            {typedTreatments.map((treatment, index) => {
               const pricing = treatment.pricing as any;
               
               return (

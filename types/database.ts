@@ -260,6 +260,149 @@ export interface Database {
           updated_at?: string;
         };
       };
+      gallery_items: {
+        Row: {
+          id: string;
+          type: "doctor" | "event" | "clinic" | "achievement";
+          title: string;
+          description: string | null;
+          image_urls: string[];
+          video_url: string | null;
+          metadata: Json;
+          is_featured: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          type: "doctor" | "event" | "clinic" | "achievement";
+          title: string;
+          description?: string | null;
+          image_urls?: string[];
+          video_url?: string | null;
+          metadata?: Json;
+          is_featured?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          type?: "doctor" | "event" | "clinic" | "achievement";
+          title?: string;
+          description?: string | null;
+          image_urls?: string[];
+          video_url?: string | null;
+          metadata?: Json;
+          is_featured?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      treatments: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          description: string;
+          condition_type: string;
+          pricing: Json;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug: string;
+          description: string;
+          condition_type: string;
+          pricing: Json;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          slug?: string;
+          description?: string;
+          condition_type?: string;
+          pricing?: Json;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      testimonials: {
+        Row: {
+          id: string;
+          patient_name: string | null;
+          content: string;
+          media_type: "image" | "audio" | "video";
+          media_url: string;
+          is_approved: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          patient_name?: string | null;
+          content: string;
+          media_type: "image" | "audio" | "video";
+          media_url: string;
+          is_approved?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          patient_name?: string | null;
+          content?: string;
+          media_type?: "image" | "audio" | "video";
+          media_url?: string;
+          is_approved?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      reviews: {
+        Row: {
+          id: string;
+          user_id: string;
+          rating: number;
+          title: string;
+          content: string;
+          is_verified: boolean;
+          is_approved: boolean;
+          admin_notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          rating: number;
+          title: string;
+          content: string;
+          is_verified?: boolean;
+          is_approved?: boolean;
+          admin_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          rating?: number;
+          title?: string;
+          content?: string;
+          is_verified?: boolean;
+          is_approved?: boolean;
+          admin_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       [key: string]: any;
     };
   };

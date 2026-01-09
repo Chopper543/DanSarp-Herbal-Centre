@@ -7,11 +7,20 @@ import { VideoPlayer } from "@/components/features/VideoPlayer";
 export default async function TestimonialsPage() {
   const supabase = await createClient();
   
+  // @ts-ignore - Supabase type inference issue with testimonials table
   const { data: testimonials } = await supabase
     .from("testimonials")
     .select("*")
     .eq("is_approved", true)
     .order("created_at", { ascending: false });
+  
+  const typedTestimonials = (testimonials as Array<{
+    id: string;
+    patient_name: string | null;
+    content: string;
+    media_type: "image" | "audio" | "video";
+    media_url: string;
+  }> | null) || [];
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -29,7 +38,7 @@ export default async function TestimonialsPage() {
           </ScrollReveal>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {testimonials?.map((testimonial, index) => (
+            {typedTestimonials.map((testimonial, index) => (
               <ScrollReveal key={testimonial.id} delay={index * 0.1}>
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 hover:shadow-lg transition-shadow">
                   {testimonial.media_type === "image" && (

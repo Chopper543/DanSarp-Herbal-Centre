@@ -25,6 +25,7 @@ export default function ReviewsPage() {
   useEffect(() => {
     async function fetchReviews() {
       const supabase = createClient();
+      // @ts-ignore - Supabase type inference issue with reviews table
       const { data } = await supabase
         .from("reviews")
         .select("*, user:users(full_name)")

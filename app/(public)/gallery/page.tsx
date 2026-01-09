@@ -6,16 +6,26 @@ import Image from "next/image";
 export default async function GalleryPage() {
   const supabase = await createClient();
   
+  // @ts-ignore - Supabase type inference issue with gallery_items table
   const { data: galleryItems } = await supabase
     .from("gallery_items")
     .select("*")
     .order("created_at", { ascending: false });
 
+  const typedGalleryItems = (galleryItems as Array<{
+    id: string;
+    type: "doctor" | "event" | "clinic" | "achievement";
+    title: string;
+    description: string | null;
+    image_urls: string[];
+    video_url: string | null;
+  }> | null) || [];
+
   const groupedItems = {
-    doctor: galleryItems?.filter((item) => item.type === "doctor") || [],
-    event: galleryItems?.filter((item) => item.type === "event") || [],
-    clinic: galleryItems?.filter((item) => item.type === "clinic") || [],
-    achievement: galleryItems?.filter((item) => item.type === "achievement") || [],
+    doctor: typedGalleryItems.filter((item) => item.type === "doctor"),
+    event: typedGalleryItems.filter((item) => item.type === "event"),
+    clinic: typedGalleryItems.filter((item) => item.type === "clinic"),
+    achievement: typedGalleryItems.filter((item) => item.type === "achievement"),
   };
 
   return (
