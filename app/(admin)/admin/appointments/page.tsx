@@ -21,7 +21,7 @@ export default function AdminAppointmentsPage() {
   }, []);
 
   const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled") => {
-    // @ts-expect-error - Supabase type inference issue with appointments table
+    // @ts-ignore - Supabase type inference issue with appointments table
     const { error } = await supabase
       .from("appointments")
       .update({ status })
