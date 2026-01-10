@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import Calendar from "react-calendar";
-import "react-calendar/dist/Calendar.css";
+import { ModernDatePicker } from "@/components/ui/ModernDatePicker";
 
 export default function AppointmentsPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -83,14 +82,13 @@ export default function AppointmentsPage() {
 
         <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 space-y-6">
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-4 text-gray-700 dark:text-gray-300">
               Select Date
             </label>
-            <Calendar
-              onChange={(value) => setSelectedDate(value as Date)}
+            <ModernDatePicker
               value={selectedDate}
+              onChange={(date) => setSelectedDate(date)}
               minDate={new Date()}
-              className="w-full"
             />
           </div>
 
