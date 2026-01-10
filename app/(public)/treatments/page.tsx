@@ -40,6 +40,43 @@ export default async function TreatmentsPage() {
             {typedTreatments.map((treatment, index) => {
               const pricing = treatment.pricing as any;
               
+              // Helper function to format pricing field names
+              const formatFieldName = (key: string): string => {
+                const nameMap: Record<string, string> = {
+                  consultation: "Consultation",
+                  monthly_therapy: "Monthly Herbal Therapy",
+                  lifestyle_coaching: "Lifestyle Coaching",
+                  nutrition_coaching: "Nutrition Coaching",
+                  stress_management_coaching: "Stress Management Coaching",
+                  wellness_coaching: "Wellness Coaching",
+                  counseling: "Counseling",
+                  follow_up: "Follow-up",
+                  monitoring: "Monitoring"
+                };
+                return nameMap[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+              };
+
+              // Helper function to format pricing value
+              const formatPricingValue = (key: string, value: any): string => {
+                if (key === "monthly_therapy" && typeof value === "object") {
+                  return `GHS ${value.min || "N/A"} - ${value.max || "N/A"}`;
+                }
+                if (typeof value === "number") {
+                  // Add "per session" for coaching/counseling fields
+                  const sessionFields = ["lifestyle_coaching", "nutrition_coaching", "stress_management_coaching", "wellness_coaching", "counseling"];
+                  if (sessionFields.includes(key)) {
+                    return `GHS ${value} per session`;
+                  }
+                  return `GHS ${value}`;
+                }
+                return "N/A";
+              };
+
+              // Get all pricing fields except consultation and monthly_therapy (handled separately)
+              const pricingFields = Object.entries(pricing || {}).filter(
+                ([key]) => key !== "monthly_therapy" && key !== "consultation"
+              );
+
               return (
                 <ScrollReveal key={treatment.id} delay={index * 0.1}>
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 hover:shadow-lg transition-shadow">
@@ -51,30 +88,40 @@ export default async function TreatmentsPage() {
                     </p>
                     
                     <div className="space-y-2 mb-6">
-                      <div className="flex justify-between">
-                        <span className="text-gray-700 dark:text-gray-300">Consultation:</span>
-                        <span className="font-semibold text-primary-600 dark:text-primary-400">
-                          GHS {pricing?.consultation || "N/A"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-700 dark:text-gray-300">Monthly Therapy:</span>
-                        <span className="font-semibold text-primary-600 dark:text-primary-400">
-                          GHS {pricing?.monthly_therapy?.min || "N/A"} - {pricing?.monthly_therapy?.max || "N/A"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-700 dark:text-gray-300">Lifestyle Coaching:</span>
-                        <span className="font-semibold text-primary-600 dark:text-primary-400">
-                          GHS {pricing?.lifestyle_coaching || "N/A"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-700 dark:text-gray-300">Follow-up:</span>
-                        <span className="font-semibold text-primary-600 dark:text-primary-400">
-                          GHS {pricing?.follow_up || "N/A"}
-                        </span>
-                      </div>
+                      {/* Consultation - always show first */}
+                      {pricing?.consultation && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-700 dark:text-gray-300">Consultation:</span>
+                          <span className="font-semibold text-primary-600 dark:text-primary-400">
+                            GHS {pricing.consultation}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* Monthly Therapy - always show second */}
+                      {pricing?.monthly_therapy && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-700 dark:text-gray-300">Monthly Herbal Therapy:</span>
+                          <span className="font-semibold text-primary-600 dark:text-primary-400">
+                            {formatPricingValue("monthly_therapy", pricing.monthly_therapy)}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* Other pricing fields */}
+                      {pricingFields.map(([key, value]) => {
+                        if (!value) return null;
+                        return (
+                          <div key={key} className="flex justify-between">
+                            <span className="text-gray-700 dark:text-gray-300">
+                              {formatFieldName(key)}:
+                            </span>
+                            <span className="font-semibold text-primary-600 dark:text-primary-400">
+                              {formatPricingValue(key, value)}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <Link
