@@ -7,11 +7,15 @@ export default async function TreatmentsPage() {
   const supabase = await createClient();
   
   // @ts-ignore - Supabase type inference issue with treatments table
-  const { data: treatments } = await supabase
+  const { data: treatments, error } = await supabase
     .from("treatments")
     .select("*")
     .eq("is_active", true)
     .order("name", { ascending: true });
+  
+  if (error) {
+    console.error("Error fetching treatments:", error);
+  }
   
   const typedTreatments = (treatments as Array<{
     id: string;
@@ -36,8 +40,18 @@ export default async function TreatmentsPage() {
             </p>
           </ScrollReveal>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {typedTreatments.map((treatment, index) => {
+          {typedTreatments.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                No treatments available at the moment.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-500">
+                {error ? `Error: ${error.message}` : "Please check back later or contact us for more information."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {typedTreatments.map((treatment, index) => {
               const pricing = treatment.pricing as any;
               
               // Helper function to format pricing field names
@@ -133,8 +147,9 @@ export default async function TreatmentsPage() {
                   </div>
                 </ScrollReveal>
               );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

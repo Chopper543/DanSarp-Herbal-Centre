@@ -2,6 +2,7 @@ import { Navbar } from "@/components/features/Navbar";
 import { ScrollReveal } from "@/components/animations/ScrollReveal";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import Image from "next/image";
 
 export default async function BranchesPage() {
   const supabase = await createClient();
@@ -21,6 +22,7 @@ export default async function BranchesPage() {
     email: string;
     coordinates: { lat: number; lng: number } | { x: number; y: number } | string | null;
     working_hours: Record<string, any> | null;
+    image_urls: string[] | null;
   }> | null) || [];
 
   return (
@@ -52,60 +54,85 @@ export default async function BranchesPage() {
               }
               const workingHours = branch.working_hours as Record<string, any> | null;
               
+              const imageUrls = (branch.image_urls as string[] | null) || [];
+              
               return (
                 <ScrollReveal key={branch.id} delay={index * 0.1}>
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 hover:shadow-lg transition-shadow">
-                    <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
-                      {branch.name}
-                    </h2>
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                    {/* Branch Images Gallery */}
+                    {imageUrls.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-1 h-48">
+                        {imageUrls.slice(0, 2).map((imageUrl, imgIndex) => (
+                          <div key={imgIndex} className="relative overflow-hidden">
+                            <Image
+                              src={imageUrl}
+                              alt={`${branch.name} - Photo ${imgIndex + 1}`}
+                              fill
+                              className="object-cover"
+                              sizes="(max-width: 768px) 50vw, 33vw"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-48 bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">Photos coming soon</p>
+                      </div>
+                    )}
                     
-                    <div className="space-y-3 mb-6">
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Address</p>
-                        <p className="text-gray-600 dark:text-gray-400">{branch.address}</p>
-                      </div>
+                    <div className="p-6">
+                      <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+                        {branch.name}
+                      </h2>
                       
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone</p>
-                        <p className="text-gray-600 dark:text-gray-400">{branch.phone}</p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</p>
-                        <p className="text-gray-600 dark:text-gray-400">{branch.email}</p>
+                      <div className="space-y-3 mb-6">
+                        <div>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Address</p>
+                          <p className="text-gray-600 dark:text-gray-400">{branch.address}</p>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone</p>
+                          <p className="text-gray-600 dark:text-gray-400">{branch.phone}</p>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</p>
+                          <p className="text-gray-600 dark:text-gray-400">{branch.email}</p>
+                        </div>
+
+                        {coordinates && (
+                          <div>
+                            <Link
+                              href={`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary-600 dark:text-primary-400 hover:underline"
+                            >
+                              View on Google Maps →
+                            </Link>
+                          </div>
+                        )}
                       </div>
 
-                      {coordinates && (
-                        <div>
-                          <Link
-                            href={`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary-600 dark:text-primary-400 hover:underline"
-                          >
-                            View on Google Maps →
-                          </Link>
+                      {workingHours && (
+                        <div className="mt-4">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Working Hours
+                          </p>
+                          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                            {Object.entries(workingHours).map(([day, hours]: [string, any]) => (
+                              <div key={day} className="flex justify-between">
+                                <span className="capitalize">{day}</span>
+                                <span>
+                                  {hours.closed ? "Closed" : `${hours.open} - ${hours.close}`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
-
-                    {workingHours && (
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Working Hours
-                        </p>
-                        <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                          {Object.entries(workingHours).map(([day, hours]: [string, any]) => (
-                            <div key={day} className="flex justify-between">
-                              <span className="capitalize">{day}</span>
-                              <span>
-                                {hours.closed ? "Closed" : `${hours.open} - ${hours.close}`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </ScrollReveal>
               );
