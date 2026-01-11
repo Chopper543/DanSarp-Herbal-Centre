@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { User, LayoutDashboard, LogOut, ChevronDown, Shield } from "lucide-react";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 export function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const supabase = createClient();

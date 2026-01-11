@@ -19,6 +19,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 interface NavItem {
   href: string;
@@ -43,7 +44,7 @@ export function DashboardSidebar() {
   const router = useRouter();
   const supabase = createClient();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

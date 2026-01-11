@@ -12,6 +12,7 @@ import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificatio
 import { Calendar, PlusCircle, FileText, MessageSquare, Shield } from "lucide-react";
 import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
@@ -25,7 +26,7 @@ export default function DashboardPage() {
   const [rating, setRating] = useState({ averageRating: 0, totalReviews: 0 });
   const [loading, setLoading] = useState(true);
   const [emailVerified, setEmailVerified] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
