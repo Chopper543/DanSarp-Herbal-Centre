@@ -9,8 +9,9 @@ import { UpcomingAppointmentsWidget } from "@/components/dashboard/UpcomingAppoi
 import { PaymentSummaryWidget } from "@/components/dashboard/PaymentSummaryWidget";
 import { UserRatingDisplay } from "@/components/dashboard/UserRatingDisplay";
 import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificationBanner";
-import { Calendar, PlusCircle, FileText, MessageSquare } from "lucide-react";
+import { Calendar, PlusCircle, FileText, MessageSquare, Shield } from "lucide-react";
 import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
+import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
@@ -24,6 +25,7 @@ export default function DashboardPage() {
   const [rating, setRating] = useState({ averageRating: 0, totalReviews: 0 });
   const [loading, setLoading] = useState(true);
   const [emailVerified, setEmailVerified] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -40,6 +42,10 @@ export default function DashboardPage() {
 
       setUser(authUser);
       setEmailVerified(authUser.email_confirmed_at !== null);
+
+      // Fetch user role
+      const role = await getUserRole();
+      setUserRole(role);
 
       // Fetch profile
       try {
@@ -102,6 +108,7 @@ export default function DashboardPage() {
   }
 
   const userName = user?.user_metadata?.full_name || profile?.full_name || "Patient";
+  const isUserAdmin = userRole && isAdmin(userRole);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
@@ -182,6 +189,14 @@ export default function DashboardPage() {
               label="View Payments"
               description="Payment history"
             />
+            {isUserAdmin && (
+              <QuickActionButton
+                href="/admin"
+                icon={Shield}
+                label="Admin Panel"
+                description="Manage the system"
+              />
+            )}
           </div>
         </div>
 

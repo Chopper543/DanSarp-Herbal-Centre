@@ -4,12 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { User, LayoutDashboard, LogOut, ChevronDown } from "lucide-react";
+import { User, LayoutDashboard, LogOut, ChevronDown, Shield } from "lucide-react";
+import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
 
 export function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -22,6 +24,10 @@ export function UserMenu() {
 
       if (authUser) {
         setUser(authUser);
+
+        // Fetch user role
+        const role = await getUserRole();
+        setUserRole(role);
 
         // Fetch user profile for avatar
         try {
@@ -41,8 +47,14 @@ export function UserMenu() {
     // Listen to auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        const role = await getUserRole();
+        setUserRole(role);
+      } else {
+        setUserRole(null);
+      }
     });
 
     return () => {
@@ -85,6 +97,8 @@ export function UserMenu() {
     .join("")
     .toUpperCase()
     .slice(0, 2) || "U";
+
+  const isUserAdmin = userRole && isAdmin(userRole);
 
   return (
     <div className="relative" ref={menuRef}>
@@ -136,6 +150,16 @@ export function UserMenu() {
               <LayoutDashboard className="w-4 h-4" />
               Dashboard
             </Link>
+            {isUserAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Shield className="w-4 h-4" />
+                Admin Panel
+              </Link>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
