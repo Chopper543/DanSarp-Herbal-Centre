@@ -3,29 +3,90 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { StatsCard } from "@/components/dashboard/StatsCard";
+import { QuickActionButton } from "@/components/dashboard/QuickActionButton";
+import { UpcomingAppointmentsWidget } from "@/components/dashboard/UpcomingAppointmentsWidget";
+import { PaymentSummaryWidget } from "@/components/dashboard/PaymentSummaryWidget";
+import { UserRatingDisplay } from "@/components/dashboard/UserRatingDisplay";
+import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificationBanner";
+import { Calendar, PlusCircle, FileText, MessageSquare } from "lucide-react";
+import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
 
 export default function DashboardPage() {
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    upcoming: 0,
+    completed: 0,
+  });
+  const [rating, setRating] = useState({ averageRating: 0, totalReviews: 0 });
   const [loading, setLoading] = useState(true);
+  const [emailVerified, setEmailVerified] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
     async function fetchData() {
       const {
-        data: { user },
+        data: { user: authUser },
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (!authUser) {
         router.push("/login");
         return;
       }
 
-      const { data } = await fetch("/api/appointments").then((res) => res.json());
-      if (data?.appointments) {
-        setAppointments(data.appointments);
+      setUser(authUser);
+      setEmailVerified(authUser.email_confirmed_at !== null);
+
+      // Fetch profile
+      try {
+        const profileResponse = await fetch("/api/profile");
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          setProfile(profileData.profile);
+          if (profileData.user?.email_verified) {
+            setEmailVerified(true);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
       }
+
+      // Fetch appointments
+      try {
+        const appointmentsResponse = await fetch("/api/appointments");
+        if (appointmentsResponse.ok) {
+          const appointmentsData = await appointmentsResponse.json();
+          const allAppointments = appointmentsData.appointments || [];
+          setAppointments(allAppointments);
+
+          const now = new Date();
+          const total = allAppointments.length;
+          const upcoming = allAppointments.filter((apt: any) => {
+            const aptDate = new Date(apt.appointment_date);
+            return aptDate >= now && apt.status !== "cancelled";
+          }).length;
+          const completed = allAppointments.filter(
+            (apt: any) => apt.status === "completed"
+          ).length;
+
+          setStats({ total, upcoming, completed });
+        }
+      } catch (error) {
+        console.error("Failed to fetch appointments:", error);
+      }
+
+      // Fetch user rating
+      try {
+        const userRating = await calculateUserRatingClient(authUser.id);
+        setRating(userRating);
+      } catch (error) {
+        console.error("Failed to fetch rating:", error);
+      }
+
       setLoading(false);
     }
 
@@ -33,82 +94,101 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
   }
 
+  const userName = user?.user_metadata?.full_name || profile?.full_name || "Patient";
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 text-gray-900 dark:text-white">
-          Dashboard
-        </h1>
+        {/* Email Verification Banner */}
+        {user && !emailVerified && (
+          <EmailVerificationBanner
+            email={user.email || ""}
+            emailVerified={emailVerified}
+          />
+        )}
 
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <Link
-            href="/appointments"
-            className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow hover:shadow-lg transition-shadow"
-          >
-            <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">
-              Book Appointment
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400">
-              Schedule your consultation
-            </p>
-          </Link>
-
-          <Link
-            href="/treatments"
-            className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow hover:shadow-lg transition-shadow"
-          >
-            <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">
-              View Treatments
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400">
-              Explore our treatment options
-            </p>
-          </Link>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
-            Your Appointments
-          </h2>
-          {appointments.length === 0 ? (
-            <p className="text-gray-600 dark:text-gray-400">
-              No appointments yet. Book your first appointment!
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {appointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        {appointment.treatment_type}
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        {new Date(appointment.appointment_date).toLocaleString()}
-                      </p>
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm ${
-                        appointment.status === "confirmed"
-                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                          : appointment.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                          : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
-                      }`}
-                    >
-                      {appointment.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Welcome back, {userName.split(" ")[0]}!
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Here's an overview of your account
+          </p>
+          {rating.totalReviews > 0 && (
+            <div className="mt-4">
+              <UserRatingDisplay
+                rating={rating.averageRating}
+                totalReviews={rating.totalReviews}
+                size="md"
+              />
             </div>
           )}
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <StatsCard
+            title="Total Appointments"
+            value={stats.total}
+            icon={Calendar}
+          />
+          <StatsCard
+            title="Upcoming"
+            value={stats.upcoming}
+            icon={PlusCircle}
+          />
+          <StatsCard
+            title="Completed"
+            value={stats.completed}
+            icon={FileText}
+          />
+        </div>
+
+        {/* Quick Actions */}
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Quick Actions
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <QuickActionButton
+              href="/appointments"
+              icon={Calendar}
+              label="Book Appointment"
+              description="Schedule a consultation"
+            />
+            <QuickActionButton
+              href="/messages"
+              icon={MessageSquare}
+              label="Messages"
+              description="View your messages"
+            />
+            <QuickActionButton
+              href="/profile"
+              icon={FileText}
+              label="Edit Profile"
+              description="Update your information"
+            />
+            <QuickActionButton
+              href="/payments"
+              icon={PlusCircle}
+              label="View Payments"
+              description="Payment history"
+            />
+          </div>
+        </div>
+
+        {/* Widgets Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <UpcomingAppointmentsWidget />
+          <PaymentSummaryWidget />
         </div>
       </div>
     </div>

@@ -403,6 +403,41 @@ export interface Database {
           updated_at?: string;
         };
       };
+      messages: {
+        Row: {
+          id: string;
+          sender_id: string;
+          recipient_id: string;
+          appointment_id: string | null;
+          subject: string;
+          content: string;
+          is_read: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          sender_id: string;
+          recipient_id: string;
+          appointment_id?: string | null;
+          subject: string;
+          content: string;
+          is_read?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          sender_id?: string;
+          recipient_id?: string;
+          appointment_id?: string | null;
+          subject?: string;
+          content?: string;
+          is_read?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       newsletter_subscribers: {
         Row: {
           id: string;
