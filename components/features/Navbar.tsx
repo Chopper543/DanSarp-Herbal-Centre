@@ -54,7 +54,7 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <Link href="/" className="flex items-center space-x-2">
+          <Link href="/" className="flex items-center space-x-2 whitespace-nowrap">
             <span className="text-2xl font-bold text-primary-600 dark:text-primary-400">
               DanSarp
             </span>
@@ -75,7 +75,7 @@ export function Navbar() {
             <ThemeToggle />
             <Link
               href="/appointments"
-              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold whitespace-nowrap"
             >
               Book Appointment
             </Link>
