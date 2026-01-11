@@ -31,8 +31,9 @@ export async function POST(request: NextRequest) {
 
     // Generate unique filename
     const fileExt = file.name.split(".").pop();
-    const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-    const filePath = `avatars/${fileName}`;
+    const fileName = `${Date.now()}.${fileExt}`;
+    // Store in user-specific folder for better organization and security
+    const filePath = `${user.id}/${fileName}`;
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
