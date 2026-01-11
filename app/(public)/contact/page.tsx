@@ -48,13 +48,13 @@ export default function ContactPage() {
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Address</h3>
                     <p className="text-gray-600 dark:text-gray-400">
-                      [Your Address Here]
+                      [Oframase New Road, Nkawkaw]
                     </p>
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Phone</h3>
                     <p className="text-gray-600 dark:text-gray-400">
-                      +233 XX XXX XXXX
+                      +233 24 690 6739
                     </p>
                   </div>
                   <div>
