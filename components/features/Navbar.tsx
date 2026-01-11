@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Menu, X, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { UserMenu } from "./UserMenu";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -38,12 +39,6 @@ export function Navbar() {
     };
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    router.push("/");
-    router.refresh();
-  };
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -87,21 +82,7 @@ export function Navbar() {
             {!loading && (
               <>
                 {user ? (
-                  <>
-                    <Link
-                      href="/dashboard"
-                      className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
-                    >
-                      Dashboard
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg transition-colors font-semibold flex items-center gap-2"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Logout
-                    </button>
-                  </>
+                  <UserMenu />
                 ) : (
                   <Link
                     href="/login"
@@ -162,9 +143,12 @@ export function Navbar() {
                       Dashboard
                     </Link>
                     <button
-                      onClick={() => {
-                        handleLogout();
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        setUser(null);
                         setMobileMenuOpen(false);
+                        router.push("/");
+                        router.refresh();
                       }}
                       className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors font-semibold flex items-center justify-center gap-2"
                     >
