@@ -48,7 +48,7 @@ export default function ContactPage() {
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Address</h3>
                     <p className="text-gray-600 dark:text-gray-400">
-                      [Oframase New Road, Nkawkaw]
+                      Oframase New Road, Nkawkaw
                     </p>
                   </div>
                   <div>
