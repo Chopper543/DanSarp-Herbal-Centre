@@ -75,7 +75,7 @@ export function Navbar() {
             <ThemeToggle />
             <Link
               href="/appointments"
-              className="bg-primary-600 hover:bg-primary-800 text-white px-4 py-2 rounded-lg transition-colors font-semibold whitespace-nowrap"
+              className="bg-primary-600 hover:bg-primary-900 text-white px-4 py-2 rounded-lg transition-colors font-semibold whitespace-nowrap"
             >
               Book Appointment
             </Link>
@@ -86,7 +86,7 @@ export function Navbar() {
                 ) : (
                   <Link
                     href="/login"
-                    className="bg-primary-600 hover:bg-primary-800 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+                    className="bg-primary-600 hover:bg-primary-900 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
                   >
                     Login
                   </Link>

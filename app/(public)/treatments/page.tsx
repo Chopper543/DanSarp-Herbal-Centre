@@ -140,7 +140,7 @@ export default async function TreatmentsPage() {
 
                     <Link
                       href={`/appointments?treatment=${treatment.slug}`}
-                      className="block w-full bg-primary-600 hover:bg-primary-800 text-white text-center py-3 rounded-lg font-semibold transition-colors"
+                      className="block w-full bg-primary-600 hover:bg-primary-900 text-white text-center py-3 rounded-lg font-semibold transition-colors"
                     >
                       Book Appointment
                     </Link>

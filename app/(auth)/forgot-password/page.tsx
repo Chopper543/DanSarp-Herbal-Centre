@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
             </div>
             <Link
               href="/login"
-              className="block w-full text-center bg-primary-600 hover:bg-primary-800 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+              className="block w-full text-center bg-primary-600 hover:bg-primary-900 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
             >
               Back to Login
             </Link>
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary-600 hover:bg-primary-800 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-primary-600 hover:bg-primary-900 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Sending..." : "Send Reset Link"}
             </button>

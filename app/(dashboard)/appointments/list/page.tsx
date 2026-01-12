@@ -74,7 +74,7 @@ export default function AppointmentsListPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Appointments</h1>
           <Link
             href="/appointments"
-            className="px-4 py-2 bg-primary-600 hover:bg-primary-800 text-white rounded-lg transition-colors"
+            className="px-4 py-2 bg-primary-600 hover:bg-primary-900 text-white rounded-lg transition-colors"
           >
             Book New Appointment
           </Link>
