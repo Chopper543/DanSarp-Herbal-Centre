@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useTransition, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,7 @@ import { UserRole } from "@/types";
 
 export function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
@@ -87,25 +88,39 @@ export function UserMenu() {
     router.refresh();
   };
 
+  // Memoize expensive computations
+  const userName = useMemo(() => {
+    return user?.user_metadata?.full_name || profile?.full_name || "User";
+  }, [user?.user_metadata?.full_name, profile?.full_name]);
+
+  const userInitials = useMemo(() => {
+    return userName
+      .split(" ")
+      .map((n: string) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "U";
+  }, [userName]);
+
+  const isUserAdmin = useMemo(() => {
+    return userRole && isAdmin(userRole);
+  }, [userRole]);
+
   if (!user) {
     return null;
   }
 
-  const userName = user.user_metadata?.full_name || profile?.full_name || "User";
-  const userInitials = userName
-    .split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "U";
-
-  const isUserAdmin = userRole && isAdmin(userRole);
+  const handleToggle = () => {
+    startTransition(() => {
+      setIsOpen(!isOpen);
+    });
+  };
 
   return (
     <div className="relative" ref={menuRef}>
       {/* User Menu Trigger */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
         aria-label="User menu"
         aria-expanded={isOpen}
@@ -122,7 +137,7 @@ export function UserMenu() {
           )}
         </div>
         <ChevronDown
-          className={`w-4 h-4 text-gray-600 dark:text-gray-400 transition-transform ${
+          className={`w-4 h-4 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${
             isOpen ? "rotate-180" : ""
           }`}
         />
