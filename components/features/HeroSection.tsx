@@ -73,10 +73,10 @@ export function HeroSection() {
               <Link href="/appointments">
                 <Button
                   size="lg"
-                  className="group relative overflow-hidden bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  className="group relative overflow-hidden bg-primary-600 hover:bg-primary-800 text-white px-8 py-4 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                 >
-                  <span className="relative z-10">Book Appointment</span>
-                  <span className="absolute inset-0 bg-primary-700 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300" />
+                  <span className="relative z-10 font-semibold">Book Appointment</span>
+                  <span className="absolute inset-0 bg-primary-800 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300" />
                 </Button>
               </Link>
               

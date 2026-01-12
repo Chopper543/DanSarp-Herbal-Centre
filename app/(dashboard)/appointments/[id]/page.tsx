@@ -250,7 +250,7 @@ export default function AppointmentDetailPage() {
                   <button
                     onClick={() => setShowReschedule(true)}
                     disabled={processing}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-800 text-white rounded-lg transition-colors disabled:opacity-50"
                   >
                     <Edit className="w-4 h-4" />
                     Reschedule
@@ -314,7 +314,7 @@ export default function AppointmentDetailPage() {
                   <button
                     onClick={handleReschedule}
                     disabled={processing || !rescheduleTime}
-                    className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg disabled:opacity-50"
+                    className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-800 text-white rounded-lg disabled:opacity-50"
                   >
                     {processing ? "Processing..." : "Reschedule"}
                   </button>
