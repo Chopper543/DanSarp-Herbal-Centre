@@ -111,6 +111,7 @@ export default function DashboardPage() {
   const userName = user?.user_metadata?.full_name || profile?.full_name || "Patient";
   const isUserAdmin = userRole && isAdmin(userRole);
   const isUserSuperAdmin = userRole && isSuperAdmin(userRole);
+  const showPatientFeatures = !isUserAdmin; // Hide patient features for all admins
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
@@ -136,9 +137,11 @@ export default function DashboardPage() {
             )}
           </div>
           <p className="text-gray-600 dark:text-gray-400">
-            Here's an overview of your account
+            {showPatientFeatures
+              ? "Here's an overview of your account"
+              : "System administration dashboard"}
           </p>
-          {rating.totalReviews > 0 && (
+          {showPatientFeatures && rating.totalReviews > 0 && (
             <div className="mt-4">
               <UserRatingDisplay
                 rating={rating.averageRating}
@@ -149,24 +152,26 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatsCard
-            title="Total Appointments"
-            value={stats.total}
-            icon={Calendar}
-          />
-          <StatsCard
-            title="Upcoming"
-            value={stats.upcoming}
-            icon={PlusCircle}
-          />
-          <StatsCard
-            title="Completed"
-            value={stats.completed}
-            icon={FileText}
-          />
-        </div>
+        {/* Statistics Cards - Only show for patients */}
+        {showPatientFeatures && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <StatsCard
+              title="Total Appointments"
+              value={stats.total}
+              icon={Calendar}
+            />
+            <StatsCard
+              title="Upcoming"
+              value={stats.upcoming}
+              icon={PlusCircle}
+            />
+            <StatsCard
+              title="Completed"
+              value={stats.completed}
+              icon={FileText}
+            />
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="mb-8">
@@ -174,12 +179,22 @@ export default function DashboardPage() {
             Quick Actions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <QuickActionButton
-              href="/appointments"
-              icon={Calendar}
-              label="Book Appointment"
-              description="Schedule a consultation"
-            />
+            {showPatientFeatures && (
+              <>
+                <QuickActionButton
+                  href="/appointments"
+                  icon={Calendar}
+                  label="Book Appointment"
+                  description="Schedule a consultation"
+                />
+                <QuickActionButton
+                  href="/payments"
+                  icon={PlusCircle}
+                  label="View Payments"
+                  description="Payment history"
+                />
+              </>
+            )}
             <QuickActionButton
               href="/messages"
               icon={MessageSquare}
@@ -192,12 +207,6 @@ export default function DashboardPage() {
               label="Edit Profile"
               description="Update your information"
             />
-            <QuickActionButton
-              href="/payments"
-              icon={PlusCircle}
-              label="View Payments"
-              description="Payment history"
-            />
             {isUserAdmin && (
               <QuickActionButton
                 href="/admin"
@@ -209,11 +218,13 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Widgets Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <UpcomingAppointmentsWidget />
-          <PaymentSummaryWidget />
-        </div>
+        {/* Widgets Grid - Only show for patients */}
+        {showPatientFeatures && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <UpcomingAppointmentsWidget />
+            <PaymentSummaryWidget />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -111,8 +111,11 @@ export function UserMenu() {
   }
 
   const handleToggle = () => {
-    startTransition(() => {
-      setIsOpen(!isOpen);
+    // Use requestAnimationFrame to defer state update, allowing UI to paint first
+    requestAnimationFrame(() => {
+      startTransition(() => {
+        setIsOpen(!isOpen);
+      });
     });
   };
 
@@ -140,6 +143,7 @@ export function UserMenu() {
           className={`w-4 h-4 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${
             isOpen ? "rotate-180" : ""
           }`}
+          style={{ willChange: "transform" }}
         />
       </button>
 

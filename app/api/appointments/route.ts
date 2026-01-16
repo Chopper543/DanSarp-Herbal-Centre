@@ -15,7 +15,49 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { branch_id, appointment_date, treatment_type, notes } = body;
+    const { branch_id, appointment_date, treatment_type, notes, payment_id } = body;
+
+    // Verify payment is provided and completed
+    if (!payment_id) {
+      return NextResponse.json(
+        { error: "Payment is required to book an appointment. Please complete payment first." },
+        { status: 400 }
+      );
+    }
+
+    // Verify payment exists and is completed
+    // @ts-ignore - Supabase type inference issue with payments table
+    const { data: payment, error: paymentError } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("id", payment_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (paymentError || !payment) {
+      return NextResponse.json(
+        { error: "Payment not found or invalid" },
+        { status: 400 }
+      );
+    }
+
+    const typedPayment = payment as { amount: number; status: string; currency: string } | null;
+
+    // Verify payment amount is 100 GHS (booking fee)
+    if (!typedPayment || parseFloat(typedPayment.amount.toString()) !== 100) {
+      return NextResponse.json(
+        { error: "Invalid payment amount. Booking fee must be 100 GHS" },
+        { status: 400 }
+      );
+    }
+
+    // Verify payment is completed
+    if (typedPayment.status !== "completed") {
+      return NextResponse.json(
+        { error: "Payment must be completed before booking appointment" },
+        { status: 400 }
+      );
+    }
 
     // Create appointment
     const { data: appointment, error } = await supabase
@@ -34,6 +76,17 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Link payment to appointment
+    const typedAppointment = appointment as { id: string } | null;
+    if (typedAppointment && payment_id) {
+      // @ts-ignore - Supabase type inference issue with payments table
+      await supabase
+        .from("payments")
+        // @ts-ignore - Supabase type inference issue with payments table
+        .update({ appointment_id: typedAppointment.id })
+        .eq("id", payment_id);
     }
 
     // Get user details for notifications
