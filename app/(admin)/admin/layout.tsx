@@ -61,7 +61,6 @@ export default function AdminLayout({
     { href: "/admin/content", label: "Content" },
     { href: "/admin/payments", label: "Payments" },
     { href: "/admin/users", label: "Users" },
-    { href: "/admin/settings", label: "Settings" },
     // Super admin only items
     ...(userRole && isSuperAdmin(userRole)
       ? [
