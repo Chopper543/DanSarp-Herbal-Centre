@@ -67,8 +67,6 @@ export default function AdminLayout({
       ? [
           { href: "/admin/admins", label: "Admin Management" },
           { href: "/admin/system", label: "System Settings" },
-          { href: "/admin/audit-logs", label: "Audit Logs" },
-          { href: "/admin/database", label: "Database Tools" },
         ]
       : []),
   ];
