@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
+import { getUserRole, isAdmin, isSuperAdmin } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 export default function AdminLayout({
   children,
@@ -15,6 +16,7 @@ export default function AdminLayout({
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
     async function checkAuth() {
@@ -33,6 +35,7 @@ export default function AdminLayout({
         return;
       }
 
+      setUserRole(role);
       setAuthorized(true);
       setLoading(false);
     }
@@ -59,6 +62,15 @@ export default function AdminLayout({
     { href: "/admin/payments", label: "Payments" },
     { href: "/admin/users", label: "Users" },
     { href: "/admin/settings", label: "Settings" },
+    // Super admin only items
+    ...(userRole && isSuperAdmin(userRole)
+      ? [
+          { href: "/admin/admins", label: "Admin Management" },
+          { href: "/admin/system", label: "System Settings" },
+          { href: "/admin/audit-logs", label: "Audit Logs" },
+          { href: "/admin/database", label: "Database Tools" },
+        ]
+      : []),
   ];
 
   return (
@@ -67,9 +79,16 @@ export default function AdminLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-8">
-              <Link href="/admin" className="text-xl font-bold text-primary-600 dark:text-primary-400">
-                Admin Panel
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href="/admin" className="text-xl font-bold text-primary-600 dark:text-primary-400">
+                  Admin Panel
+                </Link>
+                {userRole && isSuperAdmin(userRole) && (
+                  <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                    Super Admin
+                  </span>
+                )}
+              </div>
               {navItems.map((item) => (
                 <Link
                   key={item.href}

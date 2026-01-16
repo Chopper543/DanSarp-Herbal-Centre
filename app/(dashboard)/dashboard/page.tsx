@@ -11,7 +11,7 @@ import { UserRatingDisplay } from "@/components/dashboard/UserRatingDisplay";
 import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificationBanner";
 import { Calendar, PlusCircle, FileText, MessageSquare, Shield } from "lucide-react";
 import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
+import { getUserRole, isAdmin, isSuperAdmin } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 
 export default function DashboardPage() {
@@ -110,6 +110,7 @@ export default function DashboardPage() {
 
   const userName = user?.user_metadata?.full_name || profile?.full_name || "Patient";
   const isUserAdmin = userRole && isAdmin(userRole);
+  const isUserSuperAdmin = userRole && isSuperAdmin(userRole);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
@@ -124,9 +125,16 @@ export default function DashboardPage() {
 
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome back, {userName.split(" ")[0]}!
-          </h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Welcome back, {userName.split(" ")[0]}!
+            </h1>
+            {isUserSuperAdmin && (
+              <span className="px-3 py-1 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                Super Admin
+              </span>
+            )}
+          </div>
           <p className="text-gray-600 dark:text-gray-400">
             Here's an overview of your account
           </p>

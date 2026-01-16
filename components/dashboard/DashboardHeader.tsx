@@ -5,11 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { Bell } from "lucide-react";
 import Link from "next/link";
+import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 export function DashboardHeader() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -20,6 +23,10 @@ export function DashboardHeader() {
 
       if (authUser) {
         setUser(authUser);
+
+        // Fetch user role
+        const role = await getUserRole();
+        setUserRole(role);
 
         // Fetch user profile
         const response = await fetch("/api/profile");
@@ -75,9 +82,16 @@ export function DashboardHeader() {
                 />
               </Link>
               <div className="hidden md:block">
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  {user?.user_metadata?.full_name || "User"}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    {user?.user_metadata?.full_name || "User"}
+                  </p>
+                  {userRole && isSuperAdmin(userRole) && (
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                      Super Admin
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {user?.email}
                 </p>
