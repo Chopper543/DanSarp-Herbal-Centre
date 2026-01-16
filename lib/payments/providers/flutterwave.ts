@@ -26,7 +26,7 @@ export class FlutterwaveProvider implements PaymentProvider {
         tx_ref: `dansarp-${Date.now()}`,
         amount: request.amount,
         currency: request.currency,
-        redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/payments/callback`,
+        redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/appointments/payment`,
         customer: {
           email: request.metadata?.email || "",
           name: request.metadata?.name || "",

@@ -154,8 +154,32 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const appointmentId = searchParams.get("id");
     const isAdmin = searchParams.get("admin") === "true";
 
+    // If specific appointment ID is requested
+    if (appointmentId) {
+      // @ts-ignore - Supabase type inference issue with appointments table
+      const { data: appointment, error } = await supabase
+        .from("appointments")
+        .select("*")
+        .eq("id", appointmentId)
+        .single();
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+
+      // Verify user owns this appointment (unless admin)
+      const typedAppointment = appointment as { user_id: string } | null;
+      if (!isAdmin && typedAppointment && typedAppointment.user_id !== user.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      }
+
+      return NextResponse.json({ appointments: [appointment] }, { status: 200 });
+    }
+
+    // Get all appointments
     // @ts-ignore - Supabase type inference issue with appointments table
     let query = supabase.from("appointments").select("*");
 

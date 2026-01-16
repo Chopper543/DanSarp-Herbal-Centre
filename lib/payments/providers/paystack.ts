@@ -27,7 +27,7 @@ export class PaystackProvider implements PaymentProvider {
         email: request.metadata?.email || "",
         currency: request.currency,
         metadata: request.metadata,
-        callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/payments/callback`,
+        callback_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/appointments/payment`,
       }),
     });
 

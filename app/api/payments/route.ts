@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { amount, currency, payment_method, appointment_id, provider } = body;
+    const { amount, currency, payment_method, appointment_id, provider, appointment_data } = body;
 
     // Determine provider based on payment method
     let selectedProvider = provider || "paystack";
@@ -40,6 +40,17 @@ export async function POST(request: NextRequest) {
     
     const typedUserData = userData as { email: string; full_name: string | null } | null;
 
+    // Build metadata with appointment data if provided
+    const metadata: Record<string, any> = {
+      email: typedUserData?.email,
+      name: typedUserData?.full_name,
+    };
+
+    // Include appointment data in metadata if provided (for booking fee payments)
+    if (appointment_data) {
+      metadata.appointment_data = appointment_data;
+    }
+
     // Process payment
     const paymentResponse = await paymentService.processPayment(selectedProvider, {
       amount,
@@ -47,10 +58,7 @@ export async function POST(request: NextRequest) {
       payment_method,
       user_id: user.id,
       appointment_id,
-      metadata: {
-        email: typedUserData?.email,
-        name: typedUserData?.full_name,
-      },
+      metadata,
     });
 
     // Create payment record
