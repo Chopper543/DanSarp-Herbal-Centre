@@ -64,11 +64,13 @@ export async function POST(request: NextRequest) {
 
     // Prevent changing super_admin role (only one super_admin allowed)
     // @ts-ignore - Supabase type inference issue
-    const { data: targetUser } = await supabase
+    const { data: targetUserData } = await supabase
       .from("users")
       .select("role")
       .eq("id", userId)
       .single();
+
+    const targetUser = targetUserData as { role: string } | null;
 
     if (targetUser?.role === "super_admin" && newRole !== "super_admin") {
       return NextResponse.json(
@@ -82,6 +84,7 @@ export async function POST(request: NextRequest) {
       // @ts-ignore - Supabase type inference issue
       await supabase
         .from("users")
+        // @ts-ignore - Supabase type inference issue
         .update({ role: "admin" })
         .eq("role", "super_admin")
         .neq("id", userId);
@@ -91,6 +94,7 @@ export async function POST(request: NextRequest) {
     // @ts-ignore - Supabase type inference issue
     const { data, error } = await supabase
       .from("users")
+      // @ts-ignore - Supabase type inference issue
       .update({ role: newRole, updated_at: new Date().toISOString() })
       .eq("id", userId)
       .select()
