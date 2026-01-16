@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 
 interface HeroParallaxProps {
@@ -10,6 +10,7 @@ interface HeroParallaxProps {
 
 export function HeroParallax({ children, images = [] }: HeroParallaxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isPending, startTransition] = useTransition();
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end start"],
@@ -21,7 +22,11 @@ export function HeroParallax({ children, images = [] }: HeroParallaxProps) {
   return (
     <div ref={containerRef} className="relative overflow-hidden">
       <motion.div
-        style={{ y, opacity }}
+        style={{
+          y,
+          opacity,
+          willChange: "transform, opacity",
+        }}
         className="absolute inset-0 z-0"
       >
         {images.length > 0 && (

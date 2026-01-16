@@ -67,7 +67,7 @@ export default function ProfilePage() {
           </h1>
           <Link
             href="/profile/edit"
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-900 text-white rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
           >
             <Edit className="w-4 h-4" />
             Edit Profile

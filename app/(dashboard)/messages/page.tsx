@@ -119,7 +119,7 @@ export default function MessagesPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Messages</h1>
           <button
             onClick={() => setShowCompose(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-900 text-white rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             Compose
@@ -181,7 +181,7 @@ export default function MessagesPage() {
                   <button
                     type="submit"
                     disabled={sending}
-                    className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-900 text-white rounded-lg disabled:opacity-50"
+                    className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg disabled:opacity-50"
                   >
                     {sending ? "Sending..." : "Send"}
                   </button>

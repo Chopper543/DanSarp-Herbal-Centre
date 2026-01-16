@@ -76,7 +76,7 @@ export function ProfileAvatar({
         )}
       </div>
       {editable && (
-        <label className="absolute bottom-0 right-0 p-2 bg-primary-600 rounded-full cursor-pointer hover:bg-primary-900 transition-colors shadow-lg">
+        <label className="absolute bottom-0 right-0 p-2 bg-primary-600 rounded-full cursor-pointer hover:bg-primary-950 transition-colors shadow-lg">
           <Upload className="w-4 h-4 text-white" />
           <input
             type="file"

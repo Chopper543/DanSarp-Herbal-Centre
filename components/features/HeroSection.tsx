@@ -46,7 +46,7 @@ export function HeroSection() {
       <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
         <BotanicalParticles />
         
-        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/40 via-primary-800/30 to-primary-900/60 dark:from-gray-900/60 dark:via-gray-800/40 dark:to-gray-900/80" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/40 via-primary-800/30 to-primary-900/60 dark:from-gray-900/60 dark:via-gray-800/40 dark:to-gray-900/80 pointer-events-none" />
         
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
@@ -73,10 +73,10 @@ export function HeroSection() {
               <Link href="/appointments">
                 <Button
                   size="lg"
-                  className="group relative overflow-hidden bg-primary-600 hover:bg-primary-900 text-white px-8 py-4 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  className="group relative overflow-hidden bg-primary-600 hover:bg-primary-950 text-white px-8 py-4 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                 >
                   <span className="relative z-10 font-semibold">Book Appointment</span>
-                  <span className="absolute inset-0 bg-primary-900 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300" />
+                  <span className="absolute inset-0 bg-primary-950 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300" />
                 </Button>
               </Link>
               
