@@ -97,7 +97,7 @@ function AppointmentPaymentContent() {
       }
       const formattedPhone = formatGhanaPhoneNumber(phoneNumber);
       if (!validateGhanaPhoneNumber(formattedPhone)) {
-        setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX, 020XXXXXXXX, or 027XXXXXXXX)");
+        setPhoneError("Please enter a valid 10-digit Ghana phone number (e.g., 0244123456, 0204123456, or 0274123456)");
         return false;
       }
       setPhoneError("");

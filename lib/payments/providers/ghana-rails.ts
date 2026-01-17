@@ -4,6 +4,9 @@ import { PaymentMethod, PaymentStatus } from "@/types";
 export class GhanaRailsProvider implements PaymentProvider {
   name = "custom";
   
+  // Merchant mobile money number - all payments are wired to this number
+  private readonly MERCHANT_MOBILE_MONEY_NUMBER = "0246225405";
+  
   // This is a placeholder for custom Ghana payment rails integration
   // In production, this would integrate with MTN MoMo, Vodafone Cash, AirtelTigo APIs
 
@@ -32,9 +35,11 @@ export class GhanaRailsProvider implements PaymentProvider {
 
       // Simulate USSD prompt being sent
       // In production, the actual API call would be made here
+      // The payment will be wired to the merchant number: 0246225405
       console.log(`[SIMULATED] Sending USSD prompt to ${phoneNumber} for ${request.amount} GHS`);
       console.log(`[SIMULATED] Payment method: ${request.payment_method}`);
       console.log(`[SIMULATED] Transaction ID: ${transactionId}`);
+      console.log(`[SIMULATED] Merchant number: ${this.MERCHANT_MOBILE_MONEY_NUMBER}`);
       
       return {
         id: transactionId,
@@ -43,10 +48,11 @@ export class GhanaRailsProvider implements PaymentProvider {
         metadata: {
           payment_method: request.payment_method,
           phone_number: phoneNumber,
+          merchant_number: this.MERCHANT_MOBILE_MONEY_NUMBER,
           amount: request.amount,
           currency: request.currency,
           ussd_prompt_sent: true,
-          instructions: `A payment prompt has been sent to ${phoneNumber}. Please enter your Mobile Money PIN on your phone to complete the transaction.`,
+          instructions: `A payment prompt has been sent to ${phoneNumber}. Please enter your Mobile Money PIN on your phone to complete the transaction. Payment will be sent to ${this.MERCHANT_MOBILE_MONEY_NUMBER}.`,
           // In production, this would include actual API response data
         },
       };
