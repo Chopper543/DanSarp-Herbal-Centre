@@ -4,12 +4,12 @@
 
 /**
  * Validates Ghana phone number format
- * Accepts: 024XXXXXXXX, 020XXXXXXXX, 027XXXXXXXX (exactly 10 digits total)
+ * Accepts: 024XXXXXXX, 020XXXXXXX, 027XXXXXXX (exactly 10 digits total: 3-digit prefix + 7 digits)
  */
 export function validateGhanaPhoneNumber(phone: string): boolean {
   const cleaned = phone.replace(/\s+/g, '');
-  // Ghanaian numbers are exactly 10 digits: 3-digit prefix + 8 digits
-  const ghanaPhoneRegex = /^(024|020|027|23324|23320|23327)\d{8}$/;
+  // Ghanaian numbers are exactly 10 digits: 3-digit prefix + 7 digits
+  const ghanaPhoneRegex = /^(024|020|027|23324|23320|23327)\d{7}$/;
   return ghanaPhoneRegex.test(cleaned);
 }
 

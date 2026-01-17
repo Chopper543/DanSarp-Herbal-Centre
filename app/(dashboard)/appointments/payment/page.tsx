@@ -507,6 +507,7 @@ function AppointmentPaymentContent() {
                         setPhoneNumber(value);
                         if (phoneError) setPhoneError("");
                       }}
+                      maxLength={10}
                       placeholder="0244123456 or 0204123456 or 0274123456"
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
                         phoneError 
