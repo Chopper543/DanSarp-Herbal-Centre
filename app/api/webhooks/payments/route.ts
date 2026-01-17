@@ -62,7 +62,9 @@ async function createAppointmentFromPayment(supabase: any, payment: any) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    // Get raw body for signature verification (Paystack requires raw body)
+    const rawBody = await request.text();
+    const body = JSON.parse(rawBody);
     const provider = request.headers.get("x-provider") || "paystack";
 
     // Verify webhook signature (implement based on provider)
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
     if (provider === "paystack") {
       const hash = crypto
         .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY || "")
-        .update(JSON.stringify(body))
+        .update(rawBody)
         .digest("hex");
 
       if (hash !== request.headers.get("x-paystack-signature")) {
@@ -81,46 +83,67 @@ export async function POST(request: NextRequest) {
     // Process webhook based on provider
     const supabase = await createClient();
 
-    if (provider === "paystack" && body.event === "charge.success") {
-      const transactionRef = body.data.reference;
-      
-      // Verify payment
-      const paymentResponse = await paymentService.verifyPayment(
-        "paystack",
-        transactionRef
-      );
+    // Handle Paystack events (including mobile money)
+    if (provider === "paystack") {
+      // Handle charge.success (for mobile money and other payment methods)
+      if (body.event === "charge.success") {
+        const transactionRef = body.data.reference;
+        
+        // Verify payment
+        const paymentResponse = await paymentService.verifyPayment(
+          "paystack",
+          transactionRef
+        );
 
-      // Get payment record
-      // @ts-ignore - Supabase type inference issue
-      const { data: payment } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("provider_transaction_id", transactionRef)
-        .single();
-
-      // Update payment status
-      // @ts-ignore - Supabase type inference issue with payments table
-      await supabase
-        .from("payments")
-        // @ts-ignore - Supabase type inference issue with payments table
-        .update({
-          status: paymentResponse.status,
-          metadata: paymentResponse.metadata,
-        })
-        .eq("provider_transaction_id", transactionRef);
-
-      // If payment is completed and has appointment_data, create appointment
-      if (payment && paymentResponse.status === 'completed') {
+        // Get payment record
         // @ts-ignore - Supabase type inference issue
-        const { data: updatedPayment } = await supabase
+        const { data: payment } = await supabase
           .from("payments")
           .select("*")
           .eq("provider_transaction_id", transactionRef)
           .single();
-        
-        if (updatedPayment) {
-          await createAppointmentFromPayment(supabase, updatedPayment);
+
+        if (payment) {
+          // Update payment status
+          // @ts-ignore - Supabase type inference issue with payments table
+          await supabase
+            .from("payments")
+            // @ts-ignore - Supabase type inference issue with payments table
+            .update({
+              status: paymentResponse.status,
+              metadata: paymentResponse.metadata,
+            })
+            .eq("provider_transaction_id", transactionRef);
+
+          // If payment is completed and has appointment_data, create appointment
+          if (paymentResponse.status === 'completed') {
+            // @ts-ignore - Supabase type inference issue
+            const { data: updatedPayment } = await supabase
+              .from("payments")
+              .select("*")
+              .eq("provider_transaction_id", transactionRef)
+              .single();
+            
+            if (updatedPayment) {
+              await createAppointmentFromPayment(supabase, updatedPayment);
+            }
+          }
         }
+      }
+
+      // Handle charge.failed for mobile money
+      if (body.event === "charge.failed") {
+        const transactionRef = body.data.reference;
+        
+        // @ts-ignore - Supabase type inference issue with payments table
+        await supabase
+          .from("payments")
+          // @ts-ignore - Supabase type inference issue with payments table
+          .update({
+            status: "failed",
+            metadata: body.data,
+          })
+          .eq("provider_transaction_id", transactionRef);
       }
     }
 

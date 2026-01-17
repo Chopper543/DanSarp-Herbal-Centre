@@ -44,7 +44,9 @@ export async function POST(request: NextRequest) {
 
     // Determine provider based on payment method
     let selectedProvider = provider || "paystack";
-    if (["mtn_momo", "vodafone_cash", "airteltigo", "bank_transfer", "ghqr"].includes(payment_method)) {
+    // Use Paystack for mobile money payments
+    // Only use custom provider for bank_transfer and ghqr
+    if (["bank_transfer", "ghqr"].includes(payment_method)) {
       selectedProvider = "custom";
     }
 

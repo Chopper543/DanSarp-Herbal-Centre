@@ -200,8 +200,10 @@ function AppointmentPaymentContent() {
         // For mobile money payments, show message and poll for completion
         if (["mtn_momo", "vodafone_cash", "airteltigo"].includes(paymentMethod)) {
           if (paymentData.payment?.id) {
-            // Show message to user
-            alert("A payment prompt has been sent to your phone. Please enter your Mobile Money PIN to complete the transaction. We will check your payment status automatically.");
+            // Show Paystack's display_text message if available, otherwise use default
+            const displayMessage = paymentData.payment?.metadata?.display_text || 
+              "A payment prompt has been sent to your phone. Please enter your Mobile Money PIN to complete the transaction. We will check your payment status automatically.";
+            alert(displayMessage);
             
             // Start polling for payment completion
             pollForPaymentCompletion(paymentData.payment.id);
