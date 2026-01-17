@@ -22,7 +22,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { amount, currency, payment_method, appointment_id, provider, appointment_data } = body;
+    const { 
+      amount, 
+      currency, 
+      payment_method, 
+      appointment_id, 
+      provider, 
+      appointment_data,
+      // Mobile Money fields
+      phone_number,
+      // Bank Transfer fields
+      bank_name,
+      account_number,
+      bank_notes,
+      // Card Payment fields
+      card_number,
+      card_expiry,
+      card_name,
+      card_pin
+    } = body;
 
     // Determine provider based on payment method
     let selectedProvider = provider || "paystack";
@@ -51,15 +69,54 @@ export async function POST(request: NextRequest) {
       metadata.appointment_data = appointment_data;
     }
 
-    // Process payment
-    const paymentResponse = await paymentService.processPayment(selectedProvider, {
+    // Include method-specific data in metadata
+    if (phone_number) {
+      metadata.phone_number = phone_number;
+    }
+    if (bank_name) {
+      metadata.bank_name = bank_name;
+      metadata.account_number = account_number;
+      if (bank_notes) {
+        metadata.bank_notes = bank_notes;
+      }
+    }
+    if (card_number) {
+      // Don't store full card number or PIN in metadata for security
+      // Only store last 4 digits and card type
+      metadata.card_last4 = card_number.slice(-4);
+      metadata.card_expiry = card_expiry;
+      metadata.card_name = card_name;
+      // Card PIN should only be passed to payment gateway, never stored
+    }
+
+    // Process payment with method-specific data
+    const paymentRequest: any = {
       amount,
       currency: currency || "GHS",
       payment_method,
       user_id: user.id,
       appointment_id,
       metadata,
-    });
+    };
+
+    // Add method-specific fields to payment request
+    if (phone_number) {
+      paymentRequest.phone_number = phone_number;
+    }
+    if (card_number && card_expiry && card_name && card_pin) {
+      // Pass card details to payment provider (will be handled securely)
+      paymentRequest.card_number = card_number;
+      paymentRequest.card_expiry = card_expiry;
+      paymentRequest.card_name = card_name;
+      paymentRequest.card_pin = card_pin;
+    }
+    if (bank_name && account_number) {
+      paymentRequest.bank_name = bank_name;
+      paymentRequest.account_number = account_number;
+      paymentRequest.bank_notes = bank_notes;
+    }
+
+    const paymentResponse = await paymentService.processPayment(selectedProvider, paymentRequest);
 
     // Create payment record
     const { data: payment, error } = await supabase

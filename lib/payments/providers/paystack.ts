@@ -16,6 +16,68 @@ export class PaystackProvider implements PaymentProvider {
   }
 
   async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    const cardRequest = request as any;
+    
+    // Check if card details are provided for direct card charging
+    if (cardRequest.card_number && cardRequest.card_expiry && cardRequest.card_name && cardRequest.card_pin) {
+      // For direct card charging, we would use Paystack's charge API
+      // However, for security and PCI compliance, Paystack recommends using their
+      // hosted payment page or tokenization. For this implementation, we'll use
+      // the charge API with card details.
+      
+      // Note: In production, card details should be tokenized on the client side
+      // using Paystack's inline.js or sent securely to avoid PCI compliance issues
+      
+      try {
+        // First, get authorization URL for card payment
+        // Paystack requires card tokenization for security
+        // For this implementation, we'll initialize a transaction that will
+        // redirect to Paystack's secure payment page where user enters card details
+        
+        const response = await fetch("https://api.paystack.co/transaction/initialize", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.secretKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: request.amount * 100, // Convert to kobo
+            email: request.metadata?.email || "",
+            currency: request.currency,
+            metadata: {
+              ...request.metadata,
+              // Don't include card PIN in metadata for security
+              card_last4: cardRequest.card_number.slice(-4),
+            },
+            callback_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/appointments/payment`,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.status) {
+          throw new Error(data.message || "Payment initialization failed");
+        }
+
+        // Return payment URL - user will be redirected to Paystack's secure page
+        // where they can enter card details securely
+        return {
+          id: data.data.reference,
+          status: "pending",
+          provider_transaction_id: data.data.reference,
+          payment_url: data.data.authorization_url,
+          metadata: {
+            ...data.data,
+            card_last4: cardRequest.card_number.slice(-4),
+            // Card details are NOT stored in metadata for security
+          },
+        };
+      } catch (error: any) {
+        throw new Error(`Card payment failed: ${error.message}`);
+      }
+    }
+
+    // Standard payment initialization (without card details)
     const response = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
       headers: {

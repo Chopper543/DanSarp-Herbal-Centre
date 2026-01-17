@@ -3,16 +3,62 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CreditCard, Calendar, MapPin, FileText, AlertCircle, CheckCircle } from "lucide-react";
+import { CreditCard, Calendar, MapPin, FileText, AlertCircle, CheckCircle, Phone, Building2, Lock } from "lucide-react";
 import { format } from "date-fns";
+import { 
+  validateGhanaPhoneNumber, 
+  formatGhanaPhoneNumber,
+  validateCardNumber,
+  formatCardNumber,
+  validateExpiryDate,
+  formatExpiryDate,
+  validateCardPin,
+  validateAccountNumber,
+  getCardType
+} from "@/lib/payments/validation";
 
 const BOOKING_FEE = 100; // Compulsory booking fee in GHS
+
+// Ghanaian banks list
+const GHANAIAN_BANKS = [
+  "Access Bank Ghana",
+  "Agricultural Development Bank (ADB)",
+  "Bank of Africa Ghana",
+  "CalBank",
+  "Ecobank Ghana",
+  "Fidelity Bank Ghana",
+  "GCB Bank",
+  "Guaranty Trust Bank (GTBank) Ghana",
+  "Republic Bank Ghana",
+  "Standard Chartered Bank Ghana",
+  "United Bank for Africa (UBA) Ghana",
+  "Zenith Bank Ghana"
+];
 
 function AppointmentPaymentContent() {
   const [appointmentData, setAppointmentData] = useState<any>(null);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [processingPayment, setProcessingPayment] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // Mobile Money state
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  
+  // Bank Transfer state
+  const [selectedBank, setSelectedBank] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [bankTransferNotes, setBankTransferNotes] = useState("");
+  const [accountError, setAccountError] = useState("");
+  
+  // Card Payment state
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardPin, setCardPin] = useState("");
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [showCardPin, setShowCardPin] = useState(false);
+  
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -36,32 +82,134 @@ function AppointmentPaymentContent() {
     }
   }, []);
 
-  const handlePayment = async () => {
+  // Validate form based on payment method
+  const validatePaymentForm = (): boolean => {
     if (!paymentMethod) {
       alert("Please select a payment method");
+      return false;
+    }
+
+    // Mobile Money validation
+    if (["mtn_momo", "vodafone_cash", "airteltigo"].includes(paymentMethod)) {
+      if (!phoneNumber.trim()) {
+        setPhoneError("Phone number is required");
+        return false;
+      }
+      const formattedPhone = formatGhanaPhoneNumber(phoneNumber);
+      if (!validateGhanaPhoneNumber(formattedPhone)) {
+        setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX, 020XXXXXXXX, or 027XXXXXXXX)");
+        return false;
+      }
+      setPhoneError("");
+    }
+
+    // Bank Transfer validation
+    if (paymentMethod === "bank_transfer") {
+      if (!selectedBank) {
+        alert("Please select a bank");
+        return false;
+      }
+      if (!accountNumber.trim()) {
+        setAccountError("Account number is required");
+        return false;
+      }
+      if (!validateAccountNumber(accountNumber)) {
+        setAccountError("Please enter a valid account number");
+        return false;
+      }
+      setAccountError("");
+    }
+
+    // Card Payment validation
+    if (paymentMethod === "card") {
+      const errors: Record<string, string> = {};
+      
+      if (!cardNumber.trim()) {
+        errors.cardNumber = "Card number is required";
+      } else if (!validateCardNumber(cardNumber)) {
+        errors.cardNumber = "Please enter a valid card number";
+      }
+      
+      if (!cardExpiry.trim()) {
+        errors.cardExpiry = "Expiration date is required";
+      } else if (!validateExpiryDate(cardExpiry)) {
+        errors.cardExpiry = "Please enter a valid expiration date (MM/YY)";
+      }
+      
+      if (!cardName.trim()) {
+        errors.cardName = "Name on card is required";
+      }
+      
+      if (!cardPin.trim()) {
+        errors.cardPin = "Card PIN is required";
+      } else if (!validateCardPin(cardPin)) {
+        errors.cardPin = "PIN must be 4-6 digits";
+      }
+      
+      if (Object.keys(errors).length > 0) {
+        setCardErrors(errors);
+        return false;
+      }
+      setCardErrors({});
+    }
+
+    return true;
+  };
+
+  const handlePayment = async () => {
+    if (!validatePaymentForm()) {
       return;
     }
 
     setProcessingPayment(true);
 
     try {
+      // Build payment request body
+      const paymentBody: any = {
+        amount: BOOKING_FEE,
+        currency: "GHS",
+        payment_method: paymentMethod,
+        provider: paymentMethod === "card" ? "paystack" : "custom",
+        appointment_data: appointmentData,
+      };
+
+      // Add method-specific data
+      if (["mtn_momo", "vodafone_cash", "airteltigo"].includes(paymentMethod)) {
+        paymentBody.phone_number = formatGhanaPhoneNumber(phoneNumber);
+      } else if (paymentMethod === "bank_transfer") {
+        paymentBody.bank_name = selectedBank;
+        paymentBody.account_number = accountNumber;
+        paymentBody.bank_notes = bankTransferNotes;
+      } else if (paymentMethod === "card") {
+        paymentBody.card_number = cardNumber.replace(/\s+/g, '');
+        paymentBody.card_expiry = cardExpiry;
+        paymentBody.card_name = cardName;
+        paymentBody.card_pin = cardPin;
+      }
+
       // Process payment for booking fee
       const paymentResponse = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: BOOKING_FEE,
-          currency: "GHS",
-          payment_method: paymentMethod,
-          provider: paymentMethod === "card" ? "paystack" : "custom",
-          appointment_data: appointmentData, // Include appointment data in metadata
-        }),
+        body: JSON.stringify(paymentBody),
       });
 
       if (paymentResponse.ok) {
         const paymentData = await paymentResponse.json();
         
-        // If payment URL is returned, redirect to payment gateway
+        // For mobile money payments, show message and poll for completion
+        if (["mtn_momo", "vodafone_cash", "airteltigo"].includes(paymentMethod)) {
+          if (paymentData.payment?.id) {
+            // Show message to user
+            alert("A payment prompt has been sent to your phone. Please enter your Mobile Money PIN to complete the transaction. We will check your payment status automatically.");
+            
+            // Start polling for payment completion
+            pollForPaymentCompletion(paymentData.payment.id);
+            return;
+          }
+        }
+        
+        // If payment URL is returned, redirect to payment gateway (for card payments)
         if (paymentData.payment_url) {
           // Store payment ID in sessionStorage for callback
           if (paymentData.payment?.id) {
@@ -84,6 +232,44 @@ function AppointmentPaymentContent() {
       alert("Error processing payment. Please try again.");
     } finally {
       setProcessingPayment(false);
+    }
+  };
+
+  // Poll for mobile money payment completion
+  const pollForPaymentCompletion = async (paymentId: string, attempts: number = 0) => {
+    const maxAttempts = 30; // Poll for up to 5 minutes (30 attempts * 10 seconds)
+    
+    if (attempts >= maxAttempts) {
+      alert("Payment verification timed out. Please check your payment status or contact support.");
+      setProcessingPayment(false);
+      return;
+    }
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+      
+      const paymentResponse = await fetch(`/api/payments?id=${paymentId}`);
+      if (paymentResponse.ok) {
+        const paymentData = await paymentResponse.json();
+        const payment = paymentData.payment;
+        
+        if (payment && payment.status === 'completed') {
+          // Payment completed, create appointment
+          await handleAppointmentCreation(paymentId);
+        } else if (payment && payment.status === 'failed') {
+          alert("Payment failed. Please try again.");
+          setProcessingPayment(false);
+        } else {
+          // Still pending, continue polling
+          pollForPaymentCompletion(paymentId, attempts + 1);
+        }
+      } else {
+        // Error fetching payment, continue polling
+        pollForPaymentCompletion(paymentId, attempts + 1);
+      }
+    } catch (error) {
+      console.error("Error polling payment:", error);
+      pollForPaymentCompletion(paymentId, attempts + 1);
     }
   };
 
@@ -272,20 +458,27 @@ function AppointmentPaymentContent() {
             </div>
 
             {/* Payment Method Selection */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-              <div className="flex items-center gap-2 mb-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 space-y-6">
+              <div className="flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-primary-600 dark:text-primary-400" />
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                   Payment Method
                 </h2>
               </div>
+              
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                   Select Payment Method <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value);
+                    // Clear errors when changing method
+                    setPhoneError("");
+                    setAccountError("");
+                    setCardErrors({});
+                  }}
                   required
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
                 >
@@ -297,6 +490,242 @@ function AppointmentPaymentContent() {
                   <option value="bank_transfer">Bank Transfer</option>
                 </select>
               </div>
+
+              {/* Mobile Money Form */}
+              {["mtn_momo", "vodafone_cash", "airteltigo"].includes(paymentMethod) && (
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                    Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        setPhoneNumber(value);
+                        if (phoneError) setPhoneError("");
+                      }}
+                      placeholder="0244123456 or 0204123456 or 0274123456"
+                      className={`w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                        phoneError 
+                          ? "border-red-500 dark:border-red-500" 
+                          : "border-gray-300 dark:border-gray-600"
+                      }`}
+                    />
+                  </div>
+                  {phoneError && (
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    A payment prompt will be sent to your phone. Enter your Mobile Money PIN to complete the transaction.
+                  </p>
+                </div>
+              )}
+
+              {/* Bank Transfer Form */}
+              {paymentMethod === "bank_transfer" && (
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Select Bank <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <select
+                        value={selectedBank}
+                        onChange={(e) => setSelectedBank(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">Select a bank</option>
+                        {GHANAIAN_BANKS.map((bank) => (
+                          <option key={bank} value={bank}>
+                            {bank}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Account Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={accountNumber}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        setAccountNumber(value);
+                        if (accountError) setAccountError("");
+                      }}
+                      placeholder="Enter your account number"
+                      className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                        accountError 
+                          ? "border-red-500 dark:border-red-500" 
+                          : "border-gray-300 dark:border-gray-600"
+                      }`}
+                    />
+                    {accountError && (
+                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{accountError}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Additional Information (Optional)
+                    </label>
+                    <textarea
+                      value={bankTransferNotes}
+                      onChange={(e) => setBankTransferNotes(e.target.value)}
+                      placeholder="Any additional information for the transfer..."
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Card Payment Form */}
+              {paymentMethod === "card" && (
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                  {/* Accepted Cards Info */}
+                  <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-3">
+                    <p className="text-sm font-medium text-primary-800 dark:text-primary-300 mb-2">
+                      Accepted Cards
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs text-primary-700 dark:text-primary-400">
+                      <span className="px-2 py-1 bg-white dark:bg-gray-800 rounded">Visa</span>
+                      <span className="px-2 py-1 bg-white dark:bg-gray-800 rounded">Mastercard</span>
+                      <span className="px-2 py-1 bg-white dark:bg-gray-800 rounded">Verve</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Card Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cardNumber}
+                      onChange={(e) => {
+                        const formatted = formatCardNumber(e.target.value);
+                        setCardNumber(formatted);
+                        if (cardErrors.cardNumber) {
+                          setCardErrors({ ...cardErrors, cardNumber: "" });
+                        }
+                      }}
+                      placeholder="1234 5678 9012 3456"
+                      maxLength={19}
+                      className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                        cardErrors.cardNumber 
+                          ? "border-red-500 dark:border-red-500" 
+                          : "border-gray-300 dark:border-gray-600"
+                      }`}
+                    />
+                    {cardErrors.cardNumber && (
+                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardNumber}</p>
+                    )}
+                    {cardNumber && !cardErrors.cardNumber && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {getCardType(cardNumber)}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                        Expiration Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={cardExpiry}
+                        onChange={(e) => {
+                          const formatted = formatExpiryDate(e.target.value);
+                          setCardExpiry(formatted);
+                          if (cardErrors.cardExpiry) {
+                            setCardErrors({ ...cardErrors, cardExpiry: "" });
+                          }
+                        }}
+                        placeholder="MM/YY"
+                        maxLength={5}
+                        className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                          cardErrors.cardExpiry 
+                            ? "border-red-500 dark:border-red-500" 
+                            : "border-gray-300 dark:border-gray-600"
+                        }`}
+                      />
+                      {cardErrors.cardExpiry && (
+                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardExpiry}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                        Card PIN <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type={showCardPin ? "text" : "password"}
+                          value={cardPin}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                            setCardPin(value);
+                            if (cardErrors.cardPin) {
+                              setCardErrors({ ...cardErrors, cardPin: "" });
+                            }
+                          }}
+                          placeholder="••••"
+                          maxLength={6}
+                          className={`w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                            cardErrors.cardPin 
+                              ? "border-red-500 dark:border-red-500" 
+                              : "border-gray-300 dark:border-gray-600"
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCardPin(!showCardPin)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        >
+                          {showCardPin ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      {cardErrors.cardPin && (
+                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardPin}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Name on Card <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cardName}
+                      onChange={(e) => {
+                        setCardName(e.target.value);
+                        if (cardErrors.cardName) {
+                          setCardErrors({ ...cardErrors, cardName: "" });
+                        }
+                      }}
+                      placeholder="John Doe"
+                      className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                        cardErrors.cardName 
+                          ? "border-red-500 dark:border-red-500" 
+                          : "border-gray-300 dark:border-gray-600"
+                      }`}
+                    />
+                    {cardErrors.cardName && (
+                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardName}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
