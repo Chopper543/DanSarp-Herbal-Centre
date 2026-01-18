@@ -185,3 +185,73 @@ export interface OrganizationProfile {
   created_at: string;
   updated_at: string;
 }
+
+export type GenderType = 'male' | 'female' | 'other' | 'prefer_not_to_say';
+export type MaritalStatusType = 'single' | 'married' | 'divorced' | 'widowed' | 'separated';
+
+export interface DoctorNote {
+  date: string;
+  doctor: string;
+  report: string;
+  attachments?: string[];
+}
+
+export interface MedicalHistoryEntry {
+  condition: string;
+  started: string;
+  ended?: string;
+  notes?: string;
+}
+
+export interface PatientRecord {
+  id: string;
+  user_id: string;
+  
+  // Demographics
+  date_of_birth?: string;
+  age?: number;
+  gender?: GenderType;
+  marital_status?: MaritalStatusType;
+  occupation?: string;
+  
+  // Contact Information
+  home_address?: string;
+  city?: string;
+  region?: string;
+  postal_code?: string;
+  alternative_phone?: string;
+  
+  // Emergency Contact
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relationship?: string;
+  
+  // Medical Information
+  primary_condition?: string;
+  condition_started_date?: string;
+  medical_history?: MedicalHistoryEntry[];
+  allergies?: string[];
+  current_medications?: string[];
+  blood_type?: string;
+  
+  // Visit Tracking
+  first_visit_date?: string;
+  last_visit_date?: string;
+  total_visits?: number;
+  
+  // Doctor's Reports
+  doctor_notes?: DoctorNote[];
+  
+  // Additional Information
+  insurance_provider?: string;
+  insurance_number?: string;
+  referral_source?: string;
+  preferred_language?: string;
+  notes?: string;
+  
+  // Metadata
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  updated_by?: string;
+}

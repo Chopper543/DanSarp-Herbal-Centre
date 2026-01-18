@@ -123,3 +123,20 @@ BEGIN
       WITH CHECK (is_super_admin())';
   END IF;
 END $$;
+
+-- Super admins can manage patient_records (SELECT, INSERT, UPDATE, DELETE)
+-- Check if patient_records table exists first
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_name = 'patient_records'
+  ) THEN
+    DROP POLICY IF EXISTS "Super admins can manage patient_records" ON patient_records;
+    EXECUTE 'CREATE POLICY "Super admins can manage patient_records"
+      ON patient_records FOR ALL
+      USING (is_super_admin())
+      WITH CHECK (is_super_admin())';
+  END IF;
+END $$;
