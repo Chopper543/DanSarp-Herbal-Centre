@@ -121,20 +121,37 @@ export function PhoneOtpVerification({
         name: err.name,
         stack: err.stack,
         fullError: err,
-        phone: internationalPhone
+        phone: internationalPhone,
+        phoneLength: internationalPhone.length
       });
       
+      // Check for Twilio-specific errors (60200 = Invalid parameter)
+      const isTwilioError = 
+        errorMessage.includes("60200") ||
+        errorMessage.includes("Invalid parameter") ||
+        errorMessage.includes("Twilio") ||
+        (err.code && String(err.code).includes("60200")) ||
+        (errorMessage.includes("Error sending confirmation OTP to provider") && errorMessage.includes("Invalid parameter"));
+      
+      if (isTwilioError) {
+        // Twilio error - likely phone format issue
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const detailedError = isDevelopment 
+          ? `[DEV] Twilio Error: ${errorMessage}\n\nPhone number format issue.\nPhone: ${internationalPhone} (${internationalPhone.length} chars)`
+          : "Phone number format error. Please verify your phone number and try again.";
+        
+        setError(detailedError);
+      }
       // Check for specific phone provider errors (more specific detection)
-      const isPhoneProviderError = 
+      else if (
         errorMessage.includes("Unsupported phone provider") ||
         errorMessage.includes("phone provider not configured") ||
         errorMessage.includes("sms_provider_not_configured") ||
         errorMessage.includes("phone_provider_not_configured") ||
         errorMessage.toLowerCase().includes("sms provider") ||
         (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
-        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"));
-      
-      if (isPhoneProviderError) {
+        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"))
+      ) {
         // Show actual error in development, user-friendly message in production
         const isDevelopment = process.env.NODE_ENV === 'development';
         const detailedError = isDevelopment 
@@ -206,20 +223,37 @@ export function PhoneOtpVerification({
         name: err.name,
         stack: err.stack,
         fullError: err,
-        phone: internationalPhone
+        phone: internationalPhone,
+        phoneLength: internationalPhone.length
       });
       
+      // Check for Twilio-specific errors (60200 = Invalid parameter)
+      const isTwilioError = 
+        errorMessage.includes("60200") ||
+        errorMessage.includes("Invalid parameter") ||
+        errorMessage.includes("Twilio") ||
+        (err.code && String(err.code).includes("60200")) ||
+        (errorMessage.includes("Error sending confirmation OTP to provider") && errorMessage.includes("Invalid parameter"));
+      
+      if (isTwilioError) {
+        // Twilio error - likely phone format issue
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const detailedError = isDevelopment 
+          ? `[DEV] Twilio Error: ${errorMessage}\n\nPhone number format issue.\nPhone: ${internationalPhone} (${internationalPhone.length} chars)`
+          : "Phone number format error. Please verify your phone number and try again.";
+        
+        setError(detailedError);
+      }
       // Check for specific phone provider errors (more specific detection)
-      const isPhoneProviderError = 
+      else if (
         errorMessage.includes("Unsupported phone provider") ||
         errorMessage.includes("phone provider not configured") ||
         errorMessage.includes("sms_provider_not_configured") ||
         errorMessage.includes("phone_provider_not_configured") ||
         errorMessage.toLowerCase().includes("sms provider") ||
         (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
-        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"));
-      
-      if (isPhoneProviderError) {
+        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"))
+      ) {
         // Show actual error in development, user-friendly message in production
         const isDevelopment = process.env.NODE_ENV === 'development';
         const detailedError = isDevelopment 

@@ -120,6 +120,7 @@ export default function SignupPage() {
       const errorMessage = err.message || "Failed to send verification code";
       
       // Enhanced error logging - log complete error object
+      const internationalFormat = formatPhoneForSupabase(phoneNumber, false);
       console.error("Full Supabase Error Object:", {
         message: err.message,
         status: err.status,
@@ -128,20 +129,45 @@ export default function SignupPage() {
         stack: err.stack,
         fullError: err,
         localFormat: phoneNumber,
-        internationalFormat: formatPhoneForSupabase(phoneNumber, false)
+        internationalFormat: internationalFormat,
+        phoneLength: internationalFormat.length,
+        phoneFormat: internationalFormat
       });
       
+      // Check for Twilio-specific errors (60200 = Invalid parameter)
+      const isTwilioError = 
+        errorMessage.includes("60200") ||
+        errorMessage.includes("Invalid parameter") ||
+        errorMessage.includes("Twilio") ||
+        (err.code && String(err.code).includes("60200")) ||
+        (errorMessage.includes("Error sending confirmation OTP to provider") && errorMessage.includes("Invalid parameter"));
+      
+      if (isTwilioError) {
+        // Twilio error - likely phone format issue
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const detailedError = isDevelopment 
+          ? `[DEV] Twilio Error: ${errorMessage}\n\nPhone number format issue detected.\n` +
+            `Phone sent: ${internationalFormat} (${internationalFormat.length} characters)\n` +
+            `Expected: +233XXXXXXXXX (13 characters)\n` +
+            `Please check the phone number format.`
+          : "Invalid phone number format. Please ensure:\n\n" +
+            "1. Phone number is in correct format: 0244123456 or +233244123456\n" +
+            "2. Number has exactly 10 digits (local) or 13 characters (international)\n" +
+            "3. No spaces or special characters\n\n" +
+            "If the problem persists, please contact support.";
+        
+        setError(detailedError);
+      }
       // Check for specific phone provider errors (more specific detection)
-      const isPhoneProviderError = 
+      else if (
         errorMessage.includes("Unsupported phone provider") ||
         errorMessage.includes("phone provider not configured") ||
         errorMessage.includes("sms_provider_not_configured") ||
         errorMessage.includes("phone_provider_not_configured") ||
         errorMessage.toLowerCase().includes("sms provider") ||
         (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
-        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"));
-      
-      if (isPhoneProviderError) {
+        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"))
+      ) {
         // Show actual error in development, user-friendly message in production
         const isDevelopment = process.env.NODE_ENV === 'development';
         const detailedError = isDevelopment 
