@@ -49,9 +49,7 @@ export default function LoginPage() {
           Sign in to your account
         </p>
 
-        <SocialAuthButtons onError={setError} mode="login" />
-
-        <form onSubmit={handleLogin} className="space-y-6 mt-6">
+        <form onSubmit={handleLogin} className="space-y-6">
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2">
               <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -105,6 +103,8 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
+
+        <SocialAuthButtons onError={setError} mode="login" />
 
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600 dark:text-gray-400">

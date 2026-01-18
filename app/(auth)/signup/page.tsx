@@ -273,9 +273,7 @@ export default function SignupPage() {
           Join DanSarp Herbal Centre
         </p>
 
-        <SocialAuthButtons onError={handleSocialError} mode="signup" />
-
-        <form onSubmit={verificationMethod === "email" ? handleEmailSignup : handleSendOtp} className="space-y-6 mt-6">
+        <form onSubmit={verificationMethod === "email" ? handleEmailSignup : handleSendOtp} className="space-y-6">
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2">
               <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -418,6 +416,8 @@ export default function SignupPage() {
               : "Sign Up"}
           </button>
         </form>
+
+        <SocialAuthButtons onError={handleSocialError} mode="signup" />
 
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600 dark:text-gray-400">
