@@ -26,14 +26,29 @@ export default function SignupPage() {
   const supabase = createClient();
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, ""); // Only digits
-    const formatted = formatGhanaPhoneNumber(value);
+    let value = e.target.value;
+    
+    // Allow + prefix for international format
+    if (value.startsWith('+')) {
+      // Keep + and digits only
+      value = '+' + value.slice(1).replace(/\D/g, '');
+    } else {
+      // Remove all non-digits for local format
+      value = value.replace(/\D/g, '');
+    }
+    
+    // Auto-format: if user types 0, keep local format; if they type +233, keep international
+    let formatted = value;
+    if (!value.startsWith('+')) {
+      formatted = formatGhanaPhoneNumber(value);
+    }
+    
     setPhoneNumber(formatted);
     setPhoneTouched(true);
     setPhoneError("");
 
     if (formatted && !validateGhanaPhoneNumber(formatted)) {
-      setPhoneError("Please enter a valid 10-digit Ghana phone number");
+      setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
     }
   };
 
@@ -41,7 +56,7 @@ export default function SignupPage() {
     e.preventDefault();
     
     if (!validateGhanaPhoneNumber(phoneNumber)) {
-      setPhoneError("Please enter a valid 10-digit Ghana phone number");
+      setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
       return;
     }
 
@@ -52,6 +67,7 @@ export default function SignupPage() {
 
     setLoading(true);
     setError(null);
+    setPhoneError("");
 
     try {
       // Store signup data in sessionStorage for after OTP verification
@@ -63,7 +79,14 @@ export default function SignupPage() {
       }));
 
       // Convert phone to international format for Supabase
-      const internationalPhone = formatPhoneForSupabase(phoneNumber);
+      const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
+
+      // Debug logging
+      console.log("Phone OTP Request:", {
+        localFormat: phoneNumber,
+        internationalFormat: internationalPhone,
+        isValidE164: internationalPhone.startsWith('+') && /^\+233(24|20|27)\d{7}$/.test(internationalPhone)
+      });
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         phone: internationalPhone,
@@ -76,11 +99,43 @@ export default function SignupPage() {
         },
       });
 
-      if (otpError) throw otpError;
+      if (otpError) {
+        console.error("Supabase OTP Error:", {
+          error: otpError,
+          message: otpError.message,
+          localFormat: phoneNumber,
+          internationalFormat: internationalPhone
+        });
+        throw otpError;
+      }
 
+      console.log("OTP sent successfully to:", internationalPhone);
       setOtpSent(true);
     } catch (err: any) {
-      setError(err.message || "Failed to send verification code");
+      const errorMessage = err.message || "Failed to send verification code";
+      
+      // Check for specific Supabase errors
+      if (errorMessage.includes("Unsupported phone provider") || 
+          errorMessage.includes("phone provider") ||
+          errorMessage.toLowerCase().includes("provider")) {
+        setError(
+          "Phone authentication is not configured. Please ensure:\n\n" +
+          "1. Phone auth is enabled in Supabase Dashboard → Authentication → Providers → Phone\n" +
+          "2. SMS provider (Twilio/Vonage) is configured in Supabase\n" +
+          "3. Phone number format is correct (+233XXXXXXXXX)\n\n" +
+          "If you're the administrator, check your Supabase project settings."
+        );
+      } else {
+        setError(errorMessage);
+      }
+      
+      // Debug logging
+      console.error("Phone OTP Error:", {
+        localFormat: phoneNumber,
+        internationalFormat: formatPhoneForSupabase(phoneNumber, false),
+        error: err,
+        errorMessage: errorMessage
+      });
     } finally {
       setLoading(false);
     }
@@ -327,21 +382,21 @@ export default function SignupPage() {
                 value={phoneNumber}
                 onChange={handlePhoneChange}
                 onBlur={() => setPhoneTouched(true)}
-                maxLength={10}
+                maxLength={13}
                 required
                 className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${
                   phoneError && phoneTouched
                     ? "border-red-500 dark:border-red-500"
                     : "border-gray-300 dark:border-gray-600"
                 }`}
-                placeholder="0244123456"
+                placeholder="0244123456 or +233244123456"
               />
             </div>
             {phoneError && phoneTouched && (
               <p className="mt-1 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
             )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Enter a 10-digit Ghana phone number (e.g., 0244123456)
+              Enter a Ghana phone number: 0244123456 or +233244123456
             </p>
           </div>
 

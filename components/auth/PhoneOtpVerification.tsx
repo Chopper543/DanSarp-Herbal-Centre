@@ -76,7 +76,14 @@ export function PhoneOtpVerification({
 
     try {
       // Convert phone to international format for Supabase
-      const internationalPhone = formatPhoneForSupabase(phoneNumber);
+      const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
+      
+      // Debug logging
+      console.log("Phone OTP Verification:", {
+        localFormat: phoneNumber,
+        internationalFormat: internationalPhone,
+        otpLength: otpCode.length
+      });
       
       // For signup, we use 'sms' type which will create the user if they don't exist
       const { data, error: verifyError } = await supabase.auth.verifyOtp({
@@ -85,13 +92,32 @@ export function PhoneOtpVerification({
         type: "sms",
       });
 
-      if (verifyError) throw verifyError;
+      if (verifyError) {
+        console.error("OTP Verification Error:", {
+          error: verifyError,
+          message: verifyError.message,
+          phone: internationalPhone
+        });
+        throw verifyError;
+      }
 
       if (data.user) {
+        console.log("OTP verified successfully for:", internationalPhone);
         onVerified();
       }
     } catch (err: any) {
-      setError(err.message || "Invalid verification code. Please try again.");
+      const errorMessage = err.message || "Invalid verification code. Please try again.";
+      
+      // Check for specific Supabase errors
+      if (errorMessage.includes("Unsupported phone provider") || 
+          errorMessage.includes("phone provider")) {
+        setError(
+          "Phone authentication error. Please ensure phone auth is enabled in Supabase settings."
+        );
+      } else {
+        setError(errorMessage);
+      }
+      
       // Clear OTP on error
       setOtp(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
@@ -108,7 +134,13 @@ export function PhoneOtpVerification({
 
     try {
       // Convert phone to international format for Supabase
-      const internationalPhone = formatPhoneForSupabase(phoneNumber);
+      const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
+      
+      // Debug logging
+      console.log("Resending OTP:", {
+        localFormat: phoneNumber,
+        internationalFormat: internationalPhone
+      });
       
       const { error: resendError } = await supabase.auth.signInWithOtp({
         phone: internationalPhone,
@@ -117,13 +149,31 @@ export function PhoneOtpVerification({
         },
       });
 
-      if (resendError) throw resendError;
+      if (resendError) {
+        console.error("Resend OTP Error:", {
+          error: resendError,
+          message: resendError.message,
+          phone: internationalPhone
+        });
+        throw resendError;
+      }
 
+      console.log("OTP resent successfully to:", internationalPhone);
       setResendCooldown(60); // 60 second cooldown
       setOtp(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
     } catch (err: any) {
-      setError(err.message || "Failed to resend code. Please try again.");
+      const errorMessage = err.message || "Failed to resend code. Please try again.";
+      
+      // Check for specific Supabase errors
+      if (errorMessage.includes("Unsupported phone provider") || 
+          errorMessage.includes("phone provider")) {
+        setError(
+          "Phone authentication error. Please ensure phone auth is enabled in Supabase settings."
+        );
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setResendLoading(false);
     }
