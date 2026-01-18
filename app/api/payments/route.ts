@@ -10,6 +10,67 @@ paymentService.registerProvider("paystack", new PaystackProvider());
 paymentService.registerProvider("flutterwave", new FlutterwaveProvider());
 paymentService.registerProvider("custom", new GhanaRailsProvider());
 
+/**
+ * Ensures user exists in users table before creating payment
+ * This handles cases where phone OTP signup creates auth.users but sync trigger hasn't completed
+ */
+async function ensureUserExists(supabase: any, authUser: any) {
+  // Check if user exists in users table
+  const { data: existingUser, error: checkError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("id", authUser.id)
+    .single();
+
+  if (existingUser) {
+    return existingUser; // User exists, return it
+  }
+
+  // User doesn't exist, create it from auth.users data
+  console.log("User not found in users table, creating user record for:", authUser.id);
+  
+  const { data: newUser, error: createError } = await supabase
+    .from("users")
+    // @ts-ignore - Supabase type inference issue with users table
+    .insert({
+      id: authUser.id,
+      email: authUser.email || '',
+      full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
+      phone: authUser.phone || authUser.user_metadata?.phone || null,
+      email_verified: authUser.email_confirmed_at !== null,
+    })
+    .select()
+    .single();
+
+  if (createError) {
+    console.error("Failed to create user in users table:", createError);
+    // If it's a conflict (user was created between check and insert), try to fetch again
+    if (createError.code === '23505') { // Unique violation
+      const { data: retryUser } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", authUser.id)
+        .single();
+      if (retryUser) {
+        return retryUser;
+      }
+    }
+    throw new Error("User record could not be created. Please try again.");
+  }
+
+  // Also create profile if it doesn't exist
+  await supabase
+    .from("profiles")
+    // @ts-ignore - Supabase type inference issue with profiles table
+    .insert({ id: authUser.id })
+    .select()
+    .single()
+    .then(() => {}) // Ignore errors if profile already exists
+    .catch(() => {}); // Profile might already exist, that's okay
+
+  return newUser;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -19,6 +80,18 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Ensure user exists in users table before proceeding
+    // This handles cases where phone OTP signup hasn't synced to users table yet
+    try {
+      await ensureUserExists(supabase, user);
+    } catch (error: any) {
+      console.error("Error ensuring user exists:", error);
+      return NextResponse.json(
+        { error: "User account setup incomplete. Please try again in a moment." },
+        { status: 500 }
+      );
     }
 
     const body = await request.json();
@@ -139,6 +212,21 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      // Check for foreign key constraint violation
+      if (error.message?.includes("foreign key constraint") || error.code === '23503') {
+        console.error("Foreign key constraint violation - user may not exist in users table:", {
+          userId: user.id,
+          error: error.message,
+          errorCode: error.code,
+        });
+        return NextResponse.json(
+          { 
+            error: "User account not properly set up. Please try logging out and back in, or contact support.",
+            details: "The user record is missing from the database. This may happen after phone signup."
+          },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
@@ -147,7 +235,22 @@ export async function POST(request: NextRequest) {
       payment_url: paymentResponse.payment_url,
     }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Check for foreign key constraint violations in catch block
+    if (error.message?.includes("foreign key constraint") || error.code === '23503') {
+      console.error("Foreign key constraint error in payment creation:", {
+        userId: user?.id,
+        error: error.message,
+        errorCode: error.code,
+      });
+      return NextResponse.json(
+        { 
+          error: "Database error: User account not properly synchronized. Please try again or contact support.",
+          details: "This error typically occurs when the user record hasn't been created in the database yet."
+        },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({ error: error.message || "An unexpected error occurred" }, { status: 500 });
   }
 }
 

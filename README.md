@@ -70,6 +70,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 RESEND_API_KEY=your_resend_api_key
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
+VONAGE_API_KEY=your_vonage_api_key
+VONAGE_API_SECRET=your_vonage_api_secret
+VONAGE_FROM_NUMBER=your_vonage_phone_number_or_brand_name
 # ... and other variables
 ```
 
