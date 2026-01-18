@@ -74,10 +74,10 @@ export function PhoneOtpVerification({
     setVerifying(true);
     setError(null);
 
+    // Convert phone to international format for Supabase (declare outside try for catch block access)
+    const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
+
     try {
-      // Convert phone to international format for Supabase
-      const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
-      
       // Debug logging
       console.log("Phone OTP Verification:", {
         localFormat: phoneNumber,
@@ -160,10 +160,10 @@ export function PhoneOtpVerification({
     setResendLoading(true);
     setError(null);
 
+    // Convert phone to international format for Supabase (declare outside try for catch block access)
+    const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
+
     try {
-      // Convert phone to international format for Supabase
-      const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
-      
       // Debug logging
       console.log("Resending OTP:", {
         localFormat: phoneNumber,
