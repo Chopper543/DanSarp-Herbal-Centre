@@ -7,6 +7,7 @@ import Link from "next/link";
 import { PhoneOtpVerification } from "@/components/auth/PhoneOtpVerification";
 import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { validateGhanaPhoneNumber, formatGhanaPhoneNumber } from "@/lib/payments/validation";
+import { formatPhoneForSupabase } from "@/lib/utils/phone-format";
 import { Phone, Mail, AlertCircle } from "lucide-react";
 
 export default function SignupPage() {
@@ -61,8 +62,11 @@ export default function SignupPage() {
         phoneNumber,
       }));
 
+      // Convert phone to international format for Supabase
+      const internationalPhone = formatPhoneForSupabase(phoneNumber);
+
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: phoneNumber,
+        phone: internationalPhone,
         options: {
           channel: "sms",
           data: {

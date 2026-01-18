@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatPhoneForSupabase } from "@/lib/utils/phone-format";
 import { AlertCircle, CheckCircle } from "lucide-react";
 
 interface PhoneOtpVerificationProps {
@@ -74,9 +75,12 @@ export function PhoneOtpVerification({
     setError(null);
 
     try {
+      // Convert phone to international format for Supabase
+      const internationalPhone = formatPhoneForSupabase(phoneNumber);
+      
       // For signup, we use 'sms' type which will create the user if they don't exist
       const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        phone: phoneNumber,
+        phone: internationalPhone,
         token: otpCode,
         type: "sms",
       });
@@ -103,8 +107,11 @@ export function PhoneOtpVerification({
     setError(null);
 
     try {
+      // Convert phone to international format for Supabase
+      const internationalPhone = formatPhoneForSupabase(phoneNumber);
+      
       const { error: resendError } = await supabase.auth.signInWithOtp({
-        phone: phoneNumber,
+        phone: internationalPhone,
         options: {
           channel: "sms",
         },
