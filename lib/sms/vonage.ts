@@ -41,7 +41,7 @@ export async function sendSMS(to: string, text: string) {
       });
       return response;
     } else {
-      const errorMessage = response.messages?.[0]['error-text'] || 'Unknown error';
+      const errorMessage = (response.messages?.[0] as any)?.['error-text'] || (response.messages?.[0] as any)?.errorText || 'Unknown error';
       throw new Error(`Failed to send SMS: ${errorMessage}`);
     }
   } catch (error: any) {

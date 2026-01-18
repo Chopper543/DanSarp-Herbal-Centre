@@ -238,7 +238,6 @@ export async function POST(request: NextRequest) {
     // Check for foreign key constraint violations in catch block
     if (error.message?.includes("foreign key constraint") || error.code === '23503') {
       console.error("Foreign key constraint error in payment creation:", {
-        userId: user?.id,
         error: error.message,
         errorCode: error.code,
       });
