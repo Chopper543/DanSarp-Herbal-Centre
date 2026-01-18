@@ -4,41 +4,192 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { PhoneOtpVerification } from "@/components/auth/PhoneOtpVerification";
+import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
+import { validateGhanaPhoneNumber, formatGhanaPhoneNumber } from "@/lib/payments/validation";
+import { Phone, Mail, AlertCircle } from "lucide-react";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [verificationMethod, setVerificationMethod] = useState<"phone" | "email">("email");
+  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
-  const handleSignup = async (e: React.FormEvent) => {
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ""); // Only digits
+    const formatted = formatGhanaPhoneNumber(value);
+    setPhoneNumber(formatted);
+    setPhoneTouched(true);
+    setPhoneError("");
+
+    if (formatted && !validateGhanaPhoneNumber(formatted)) {
+      setPhoneError("Please enter a valid 10-digit Ghana phone number");
+    }
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateGhanaPhoneNumber(phoneNumber)) {
+      setPhoneError("Please enter a valid 10-digit Ghana phone number");
+      return;
+    }
+
+    if (!fullName || !email || !password) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // Store signup data in sessionStorage for after OTP verification
+      sessionStorage.setItem("pendingSignup", JSON.stringify({
         email,
         password,
+        fullName,
+        phoneNumber,
+      }));
+
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        phone: phoneNumber,
         options: {
+          channel: "sms",
           data: {
             full_name: fullName,
+            email: email,
           },
         },
       });
 
-      if (error) throw error;
+      if (otpError) throw otpError;
+
+      setOtpSent(true);
+    } catch (err: any) {
+      setError(err.message || "Failed to send verification code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneVerified = async () => {
+    // After phone OTP verification, update user with email and password
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get stored signup data
+      const storedData = sessionStorage.getItem("pendingSignup");
+      if (!storedData) {
+        throw new Error("Signup data not found");
+      }
+
+      const { email: storedEmail, password: storedPassword, fullName: storedFullName } = JSON.parse(storedData);
+
+      // Get the current user (created by OTP verification)
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("User not found after verification");
+      }
+
+      // Update user with email and password
+      const { error: updateError } = await supabase.auth.updateUser({
+        email: storedEmail,
+        password: storedPassword,
+        data: {
+          full_name: storedFullName,
+          phone: phoneNumber,
+        },
+      });
+
+      if (updateError) throw updateError;
+
+      // Update users table
+      // @ts-ignore - Supabase type inference issue with users table
+      const { error: dbError } = await supabase
+        .from("users")
+        // @ts-ignore - Supabase type inference issue
+        .update({ 
+          phone: phoneNumber, 
+          full_name: storedFullName,
+          email: storedEmail,
+        })
+        .eq("id", user.id);
+
+      if (dbError) {
+        console.error("Failed to update users table:", dbError);
+        // Don't throw - user is already created
+      }
+
+      // Clear stored data
+      sessionStorage.removeItem("pendingSignup");
+
+      setSuccess(true);
+      setTimeout(() => {
+        router.push("/dashboard");
+        router.refresh();
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message || "Failed to complete signup");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    if (!validateGhanaPhoneNumber(phoneNumber)) {
+      setPhoneError("Please enter a valid 10-digit Ghana phone number");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error: signupError } = await supabase.auth.signUp({
+        email,
+        password,
+        phone: phoneNumber,
+        options: {
+          data: {
+            full_name: fullName,
+            phone: phoneNumber,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (signupError) throw signupError;
 
       if (data.user) {
+        // Update users table with phone number
+        if (data.user.id) {
+          // @ts-ignore - Supabase type inference issue with users table
+          const { error: dbError } = await supabase
+            .from("users")
+            // @ts-ignore - Supabase type inference issue
+            .update({ phone: phoneNumber })
+            .eq("id", data.user.id);
+
+          if (dbError) {
+            console.error("Failed to update users table:", dbError);
+          }
+        }
+
         setSuccess(true);
-        // Wait a moment then redirect
-        setTimeout(() => {
-          router.push("/login");
-        }, 2000);
       }
     } catch (err: any) {
       setError(err.message || "Failed to sign up");
@@ -47,15 +198,17 @@ export default function SignupPage() {
     }
   };
 
-  if (success) {
+  const handleSocialError = (errorMessage: string) => {
+    setError(errorMessage);
+  };
+
+  if (success && verificationMethod === "email") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
           <div className="mb-4">
             <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto">
-              <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+              <Mail className="w-8 h-8 text-green-600 dark:text-green-400" />
             </div>
           </div>
           <h1 className="text-2xl font-bold mb-2 text-primary-700 dark:text-primary-400">
@@ -64,6 +217,47 @@ export default function SignupPage() {
           <p className="text-gray-600 dark:text-gray-400">
             We've sent you a confirmation link. Please check your email to verify your account.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (otpSent && verificationMethod === "phone") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <h1 className="text-3xl font-bold text-center mb-2 text-primary-700 dark:text-primary-400">
+            Verify Phone Number
+          </h1>
+          <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
+            Enter the verification code sent to your phone
+          </p>
+
+          <PhoneOtpVerification
+            phoneNumber={phoneNumber}
+            onVerified={handlePhoneVerified}
+            onError={setError}
+          />
+
+          {error && (
+            <div className="mt-4 flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="mt-6 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setOtpSent(false);
+                setError(null);
+              }}
+              className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            >
+              Change phone number
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -79,10 +273,13 @@ export default function SignupPage() {
           Join DanSarp Herbal Centre
         </p>
 
-        <form onSubmit={handleSignup} className="space-y-6">
+        <SocialAuthButtons onError={handleSocialError} mode="signup" />
+
+        <form onSubmit={verificationMethod === "email" ? handleEmailSignup : handleSendOtp} className="space-y-6 mt-6">
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
-              {error}
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -117,6 +314,36 @@ export default function SignupPage() {
           </div>
 
           <div>
+            <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Phone Number <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                id="phoneNumber"
+                type="tel"
+                value={phoneNumber}
+                onChange={handlePhoneChange}
+                onBlur={() => setPhoneTouched(true)}
+                maxLength={10}
+                required
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${
+                  phoneError && phoneTouched
+                    ? "border-red-500 dark:border-red-500"
+                    : "border-gray-300 dark:border-gray-600"
+                }`}
+                placeholder="0244123456"
+              />
+            </div>
+            {phoneError && phoneTouched && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Enter a 10-digit Ghana phone number (e.g., 0244123456)
+            </p>
+          </div>
+
+          <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Password
             </label>
@@ -135,12 +362,60 @@ export default function SignupPage() {
             </p>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Verification Method
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <input
+                  type="radio"
+                  name="verificationMethod"
+                  value="email"
+                  checked={verificationMethod === "email"}
+                  onChange={(e) => setVerificationMethod(e.target.value as "email" | "phone")}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                />
+                <div className="flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">Email Verification</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Verify via email link</p>
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <input
+                  type="radio"
+                  name="verificationMethod"
+                  value="phone"
+                  checked={verificationMethod === "phone"}
+                  onChange={(e) => setVerificationMethod(e.target.value as "email" | "phone")}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                />
+                <div className="flex items-center gap-2">
+                  <Phone className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">Phone OTP</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Verify via SMS code</p>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (phoneTouched && !validateGhanaPhoneNumber(phoneNumber))}
             className="w-full bg-primary-600 hover:bg-primary-950 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Creating account..." : "Sign Up"}
+            {loading
+              ? verificationMethod === "phone"
+                ? "Sending code..."
+                : "Creating account..."
+              : verificationMethod === "phone"
+              ? "Send Verification Code"
+              : "Sign Up"}
           </button>
         </form>
 
