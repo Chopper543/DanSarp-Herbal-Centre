@@ -93,9 +93,14 @@ export function PhoneOtpVerification({
       });
 
       if (verifyError) {
-        console.error("OTP Verification Error:", {
-          error: verifyError,
+        // Enhanced error logging
+        console.error("OTP Verification Error (Full Object):", {
           message: verifyError.message,
+          status: verifyError.status,
+          code: (verifyError as any).code || 'N/A',
+          name: verifyError.name,
+          stack: verifyError.stack,
+          fullError: verifyError,
           phone: internationalPhone
         });
         throw verifyError;
@@ -108,12 +113,35 @@ export function PhoneOtpVerification({
     } catch (err: any) {
       const errorMessage = err.message || "Invalid verification code. Please try again.";
       
-      // Check for specific Supabase errors
-      if (errorMessage.includes("Unsupported phone provider") || 
-          errorMessage.includes("phone provider")) {
-        setError(
-          "Phone authentication error. Please ensure phone auth is enabled in Supabase settings."
-        );
+      // Enhanced error logging - log complete error object
+      console.error("Full Supabase Verification Error Object:", {
+        message: err.message,
+        status: err.status,
+        code: err.code || 'N/A',
+        name: err.name,
+        stack: err.stack,
+        fullError: err,
+        phone: internationalPhone
+      });
+      
+      // Check for specific phone provider errors (more specific detection)
+      const isPhoneProviderError = 
+        errorMessage.includes("Unsupported phone provider") ||
+        errorMessage.includes("phone provider not configured") ||
+        errorMessage.includes("sms_provider_not_configured") ||
+        errorMessage.includes("phone_provider_not_configured") ||
+        errorMessage.toLowerCase().includes("sms provider") ||
+        (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
+        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"));
+      
+      if (isPhoneProviderError) {
+        // Show actual error in development, user-friendly message in production
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const detailedError = isDevelopment 
+          ? `[DEV] ${errorMessage}\n\nPhone authentication may not be configured. Check Supabase settings.`
+          : "Phone authentication error. Please ensure phone auth is enabled in Supabase settings.";
+        
+        setError(detailedError);
       } else {
         setError(errorMessage);
       }
@@ -150,9 +178,14 @@ export function PhoneOtpVerification({
       });
 
       if (resendError) {
-        console.error("Resend OTP Error:", {
-          error: resendError,
+        // Enhanced error logging
+        console.error("Resend OTP Error (Full Object):", {
           message: resendError.message,
+          status: resendError.status,
+          code: (resendError as any).code || 'N/A',
+          name: resendError.name,
+          stack: resendError.stack,
+          fullError: resendError,
           phone: internationalPhone
         });
         throw resendError;
@@ -165,12 +198,35 @@ export function PhoneOtpVerification({
     } catch (err: any) {
       const errorMessage = err.message || "Failed to resend code. Please try again.";
       
-      // Check for specific Supabase errors
-      if (errorMessage.includes("Unsupported phone provider") || 
-          errorMessage.includes("phone provider")) {
-        setError(
-          "Phone authentication error. Please ensure phone auth is enabled in Supabase settings."
-        );
+      // Enhanced error logging - log complete error object
+      console.error("Full Supabase Resend Error Object:", {
+        message: err.message,
+        status: err.status,
+        code: err.code || 'N/A',
+        name: err.name,
+        stack: err.stack,
+        fullError: err,
+        phone: internationalPhone
+      });
+      
+      // Check for specific phone provider errors (more specific detection)
+      const isPhoneProviderError = 
+        errorMessage.includes("Unsupported phone provider") ||
+        errorMessage.includes("phone provider not configured") ||
+        errorMessage.includes("sms_provider_not_configured") ||
+        errorMessage.includes("phone_provider_not_configured") ||
+        errorMessage.toLowerCase().includes("sms provider") ||
+        (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
+        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"));
+      
+      if (isPhoneProviderError) {
+        // Show actual error in development, user-friendly message in production
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const detailedError = isDevelopment 
+          ? `[DEV] ${errorMessage}\n\nPhone authentication may not be configured. Check Supabase settings.`
+          : "Phone authentication error. Please ensure phone auth is enabled in Supabase settings.";
+        
+        setError(detailedError);
       } else {
         setError(errorMessage);
       }

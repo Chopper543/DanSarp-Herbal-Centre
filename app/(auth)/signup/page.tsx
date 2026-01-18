@@ -100,9 +100,14 @@ export default function SignupPage() {
       });
 
       if (otpError) {
-        console.error("Supabase OTP Error:", {
-          error: otpError,
+        // Enhanced error logging
+        console.error("Supabase OTP Error (Full Object):", {
           message: otpError.message,
+          status: otpError.status,
+          code: (otpError as any).code || 'N/A',
+          name: otpError.name,
+          stack: otpError.stack,
+          fullError: otpError,
           localFormat: phoneNumber,
           internationalFormat: internationalPhone
         });
@@ -114,28 +119,44 @@ export default function SignupPage() {
     } catch (err: any) {
       const errorMessage = err.message || "Failed to send verification code";
       
-      // Check for specific Supabase errors
-      if (errorMessage.includes("Unsupported phone provider") || 
-          errorMessage.includes("phone provider") ||
-          errorMessage.toLowerCase().includes("provider")) {
-        setError(
-          "Phone authentication is not configured. Please ensure:\n\n" +
-          "1. Phone auth is enabled in Supabase Dashboard → Authentication → Providers → Phone\n" +
-          "2. SMS provider (Twilio/Vonage) is configured in Supabase\n" +
-          "3. Phone number format is correct (+233XXXXXXXXX)\n\n" +
-          "If you're the administrator, check your Supabase project settings."
-        );
+      // Enhanced error logging - log complete error object
+      console.error("Full Supabase Error Object:", {
+        message: err.message,
+        status: err.status,
+        code: err.code || 'N/A',
+        name: err.name,
+        stack: err.stack,
+        fullError: err,
+        localFormat: phoneNumber,
+        internationalFormat: formatPhoneForSupabase(phoneNumber, false)
+      });
+      
+      // Check for specific phone provider errors (more specific detection)
+      const isPhoneProviderError = 
+        errorMessage.includes("Unsupported phone provider") ||
+        errorMessage.includes("phone provider not configured") ||
+        errorMessage.includes("sms_provider_not_configured") ||
+        errorMessage.includes("phone_provider_not_configured") ||
+        errorMessage.toLowerCase().includes("sms provider") ||
+        (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
+        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"));
+      
+      if (isPhoneProviderError) {
+        // Show actual error in development, user-friendly message in production
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const detailedError = isDevelopment 
+          ? `[DEV] ${errorMessage}\n\nPhone authentication may not be configured. Check Supabase settings.`
+          : "Phone authentication is not configured. Please ensure:\n\n" +
+            "1. Phone auth is enabled in Supabase Dashboard → Authentication → Providers → Phone\n" +
+            "2. SMS provider (Twilio/Vonage) is configured in Supabase\n" +
+            "3. Phone number format is correct (+233XXXXXXXXX)\n\n" +
+            "If you're the administrator, check your Supabase project settings.";
+        
+        setError(detailedError);
       } else {
+        // Show actual error message for other errors
         setError(errorMessage);
       }
-      
-      // Debug logging
-      console.error("Phone OTP Error:", {
-        localFormat: phoneNumber,
-        internationalFormat: formatPhoneForSupabase(phoneNumber, false),
-        error: err,
-        errorMessage: errorMessage
-      });
     } finally {
       setLoading(false);
     }
