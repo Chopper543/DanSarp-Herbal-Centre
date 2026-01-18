@@ -113,25 +113,44 @@ export function formatPhoneForSupabase(phone: string, debug: boolean = false): s
     result = `+233${digits}`;
   }
 
-  // Ensure result is exactly 13 characters for Ghana mobile (+233 + 9 digits)
-  // Validate Ghana mobile format specifically
-  if (!isValidGhanaMobileNumber(result)) {
+  // Validate E.164 format first (more lenient check)
+  if (!isValidE164Format(result)) {
     if (debug) {
-      console.error('formatPhoneForSupabase: Invalid Ghana mobile format', {
+      console.error('formatPhoneForSupabase: Invalid E.164 format result', {
+        result,
+        length: result.length,
+        expectedFormat: '+233XXXXXXXXX',
+        expectedLength: 13
+      });
+    }
+    throw new Error(`Invalid phone format: "${result}". Expected E.164 format: +233XXXXXXXXX (13 characters: +233 + 9 digits)`);
+  }
+
+  // Validate Ghana format: must start with +233 and be exactly 13 characters
+  if (!result.startsWith('+233') || result.length !== 13) {
+    if (debug) {
+      console.error('formatPhoneForSupabase: Invalid Ghana phone format', {
         result,
         length: result.length,
         expectedLength: 13,
-        isValidE164: isValidE164Format(result),
-        isValidGhana: isValidGhanaMobileNumber(result)
+        startsWith233: result.startsWith('+233'),
+        isValidE164: isValidE164Format(result)
       });
     }
-    throw new Error(`Invalid Ghana mobile phone format: ${result}. Expected format: +233XXXXXXXXX (13 characters total)`);
+    throw new Error(`Invalid Ghana phone format: "${result}". Expected: +233XXXXXXXXX (13 characters total: +233 + 9 digits). Received: ${result.length} characters.`);
   }
 
-  // Final validation: ensure E.164 format
-  if (!isValidE164Format(result)) {
-    if (debug) console.error('formatPhoneForSupabase: Invalid E.164 format result', result);
-    throw new Error(`Invalid phone format: ${result}. Expected E.164 format (+233XXXXXXXXX)`);
+  // Check if it matches strict mobile pattern (24, 20, 27) - warn but don't reject
+  if (!isValidGhanaMobileNumber(result)) {
+    if (debug) {
+      console.warn('formatPhoneForSupabase: Phone number may not be a standard mobile number (24/20/27 prefix), but format is valid', {
+        result,
+        isValidE164: isValidE164Format(result),
+        isValidGhana: isValidGhanaMobileNumber(result),
+        note: 'Accepting as valid Ghana E.164 format'
+      });
+    }
+    // Don't throw error - accept any valid Ghana E.164 format
   }
 
   if (debug) {
