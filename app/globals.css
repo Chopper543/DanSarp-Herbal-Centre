@@ -58,3 +58,16 @@ html {
 ::selection {
   @apply bg-primary-200 dark:bg-primary-800 text-primary-900 dark:text-primary-100;
 }
+
+/* FAQ Details/Summary styling */
+details[open] summary svg {
+  transform: rotate(180deg);
+}
+
+details summary {
+  list-style: none;
+}
+
+details summary::-webkit-details-marker {
+  display: none;
+}
