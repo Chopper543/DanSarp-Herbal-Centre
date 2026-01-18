@@ -1,7 +1,12 @@
 -- Migration: Promote specific user to super_admin and enforce single super_admin
--- This migration promotes user with id 397c1e07-ea09-4f9a-9797-dbdbfc0b05fe to super_admin
--- and ensures only one super_admin can exist in the system
+-- DISABLED: This migration has been disabled. Super admin promotion
+-- should be done manually in Supabase dashboard.
+--
+-- Automatic promotion of users to super_admin has been removed for security.
+-- Super admin roles must be assigned manually through the Supabase dashboard.
 
+-- Original code (DISABLED):
+/*
 -- Step 1: Demote all existing super_admin users to admin
 -- (This ensures we start with a clean state)
 UPDATE users
@@ -47,3 +52,4 @@ BEGIN
       promoted_user.email, promoted_user.id, super_admin_count;
   END IF;
 END $$;
+*/

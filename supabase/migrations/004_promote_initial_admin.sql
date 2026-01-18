@@ -1,7 +1,13 @@
 -- Migration: Promote initial admin user to super_admin
--- This migration promotes the user antwidaniel543@gmail.com to super_admin role
--- Run this migration once during initial setup via Supabase Dashboard SQL Editor or CLI
+-- DISABLED: This migration has been disabled. Super admin promotion
+-- should be done manually in Supabase dashboard.
+-- 
+-- The automatic promotion of antwidaniel543@gmail.com has been removed.
+-- Users must sign up as normal users and be manually promoted to super_admin
+-- through the Supabase dashboard or through proper admin management tools.
 
+-- Original code (DISABLED):
+/*
 -- Find user by email and promote to super_admin
 -- This handles both cases: user exists in users table or needs to be created
 WITH user_lookup AS (
@@ -46,3 +52,4 @@ BEGIN
     RAISE NOTICE 'Successfully promoted user % to super_admin role', promoted_user.email;
   END IF;
 END $$;
+*/
