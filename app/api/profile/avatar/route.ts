@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       data: { publicUrl },
     } = supabase.storage.from("avatars").getPublicUrl(filePath);
 
-    // Update profile with new avatar URL
+    // Update profile with new avatar URL (store base URL without cache-busting)
     const { error: updateError } = await supabase
       .from("profiles")
       // @ts-ignore - Supabase type inference issue with profiles table
@@ -66,7 +66,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 400 });
     }
 
-    return NextResponse.json({ avatar_url: publicUrl }, { status: 200 });
+    // Return URL with cache-busting timestamp to force immediate refresh
+    const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+    return NextResponse.json({ avatar_url: avatarUrl }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

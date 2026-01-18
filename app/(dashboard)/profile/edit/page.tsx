@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { ProfileAvatar } from "@/components/dashboard/ProfileAvatar";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle } from "lucide-react";
 import Link from "next/link";
+import { getBaseAvatarUrl } from "@/lib/utils/avatar-url";
 
 export default function EditProfilePage() {
   const [user, setUser] = useState<any>(null);
@@ -19,6 +20,7 @@ export default function EditProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -85,6 +87,8 @@ export default function EditProfilePage() {
   };
 
   const handleAvatarUpload = async (file: File) => {
+    setAvatarUploadSuccess(false);
+    setError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -95,19 +99,35 @@ export default function EditProfilePage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload avatar");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload avatar");
       }
 
       const data = await response.json();
-      // Update local state
+      // Store base URL (without cache-busting) in state
+      const baseUrl = getBaseAvatarUrl(data.avatar_url);
+      
+      // Update local state with base URL
       if (profile) {
-        setProfile({ ...profile, avatar_url: data.avatar_url });
+        setProfile({ ...profile, avatar_url: baseUrl });
       } else {
-        setProfile({ avatar_url: data.avatar_url });
+        setProfile({ avatar_url: baseUrl });
       }
-    } catch (error) {
+      
+      // Show success message
+      setAvatarUploadSuccess(true);
+      
+      // Refresh router to ensure data is synced
+      router.refresh();
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setAvatarUploadSuccess(false);
+      }, 3000);
+    } catch (error: any) {
       console.error("Failed to upload avatar:", error);
-      alert("Failed to upload avatar. Please try again.");
+      setError(error.message || "Failed to upload avatar. Please try again.");
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -136,8 +156,15 @@ export default function EditProfilePage() {
 
         <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 border border-gray-200 dark:border-gray-700 space-y-6">
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
-              {error}
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center gap-2">
+              <span>{error}</span>
+            </div>
+          )}
+
+          {avatarUploadSuccess && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 flex-shrink-0" />
+              <span>Avatar uploaded successfully!</span>
             </div>
           )}
 

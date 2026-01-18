@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { User, Upload } from "lucide-react";
 import Image from "next/image";
+import { getAvatarUrl } from "@/lib/utils/avatar-url";
 
 interface ProfileAvatarProps {
   avatarUrl: string | null;
@@ -54,18 +55,23 @@ export function ProfileAvatar({
     .toUpperCase()
     .slice(0, 2) || "U";
 
+  // Add cache-busting to avatar URL to force refresh when it changes
+  const cachedAvatarUrl = useMemo(() => getAvatarUrl(avatarUrl), [avatarUrl]);
+
   return (
     <div className={`relative inline-block ${className}`}>
       <div
         className={`${sizeClasses[size]} rounded-full bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center overflow-hidden border-2 border-gray-200 dark:border-gray-700`}
       >
-        {avatarUrl ? (
+        {cachedAvatarUrl ? (
           <Image
-            src={avatarUrl}
+            key={cachedAvatarUrl}
+            src={cachedAvatarUrl}
             alt={name || "User avatar"}
             width={size === "sm" ? 48 : size === "md" ? 96 : 128}
             height={size === "sm" ? 48 : size === "md" ? 96 : 128}
             className="w-full h-full object-cover"
+            unoptimized
           />
         ) : (
           <span
