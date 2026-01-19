@@ -9,27 +9,36 @@ import { ArrowLeft, Calendar, User } from "lucide-react";
 export default async function BlogPostPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
+  const { slug } = await params;
   const supabase = await createClient();
 
   // Fetch the blog post by slug
   // @ts-ignore - Supabase type inference issue with blog_posts table
-  const { data: post } = await supabase
+  const { data: post, error: postError } = await supabase
     .from("blog_posts")
-    .select(`
-      *,
-      author:users!blog_posts_author_id_fkey(id, full_name, email)
-    `)
-    .eq("slug", params.slug)
+    .select("*")
+    .eq("slug", slug)
     .eq("status", "published")
     .single();
 
-  if (!post) {
+  if (postError || !post) {
     notFound();
   }
 
-  const typedPost = post as {
+  // Fetch author information separately
+  // @ts-ignore - Supabase type inference issue with users table
+  const { data: author } = await supabase
+    .from("users")
+    .select("id, full_name, email")
+    .eq("id", post.author_id)
+    .single();
+
+  const typedPost = {
+    ...post,
+    author: author || null,
+  } as {
     id: string;
     title: string;
     slug: string;
