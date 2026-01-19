@@ -192,7 +192,7 @@ export function PatientRecordForm({
                 value={formData.user_id}
                 onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                 required
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter user ID"
               />
             </div>
@@ -205,7 +205,7 @@ export function PatientRecordForm({
                 type="date"
                 value={formData.date_of_birth}
                 onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
               />
             </div>
 
@@ -216,7 +216,7 @@ export function PatientRecordForm({
               <select
                 value={formData.gender}
                 onChange={(e) => setFormData({ ...formData, gender: e.target.value as GenderType })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
               >
                 <option value="">Select Gender</option>
                 <option value="male">Male</option>
@@ -233,7 +233,7 @@ export function PatientRecordForm({
               <select
                 value={formData.marital_status}
                 onChange={(e) => setFormData({ ...formData, marital_status: e.target.value as MaritalStatusType })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
               >
                 <option value="">Select Marital Status</option>
                 <option value="single">Single</option>
@@ -252,7 +252,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.occupation}
                 onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter occupation"
               />
             </div>
@@ -270,7 +270,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.home_address}
                 onChange={(e) => setFormData({ ...formData, home_address: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter home address"
               />
             </div>
@@ -283,7 +283,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.city}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter city"
               />
             </div>
@@ -296,7 +296,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.region}
                 onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter region"
               />
             </div>
@@ -309,7 +309,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.postal_code}
                 onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter postal code"
               />
             </div>
@@ -322,7 +322,7 @@ export function PatientRecordForm({
                 type="tel"
                 value={formData.alternative_phone}
                 onChange={(e) => setFormData({ ...formData, alternative_phone: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter alternative phone"
               />
             </div>
@@ -340,7 +340,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.emergency_contact_name}
                 onChange={(e) => setFormData({ ...formData, emergency_contact_name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter emergency contact name"
               />
             </div>
@@ -353,7 +353,7 @@ export function PatientRecordForm({
                 type="tel"
                 value={formData.emergency_contact_phone}
                 onChange={(e) => setFormData({ ...formData, emergency_contact_phone: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter emergency contact phone"
               />
             </div>
@@ -366,7 +366,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.emergency_contact_relationship}
                 onChange={(e) => setFormData({ ...formData, emergency_contact_relationship: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="e.g., Spouse, Parent, Sibling"
               />
             </div>
@@ -385,7 +385,7 @@ export function PatientRecordForm({
                   type="text"
                   value={formData.primary_condition}
                   onChange={(e) => setFormData({ ...formData, primary_condition: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter primary condition"
                 />
               </div>
@@ -398,7 +398,7 @@ export function PatientRecordForm({
                   type="date"
                   value={formData.condition_started_date}
                   onChange={(e) => setFormData({ ...formData, condition_started_date: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 />
               </div>
 
@@ -409,7 +409,7 @@ export function PatientRecordForm({
                 <select
                   value={formData.blood_type}
                   onChange={(e) => setFormData({ ...formData, blood_type: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="">Select Blood Type</option>
                   <option value="A+">A+</option>
@@ -435,7 +435,7 @@ export function PatientRecordForm({
                   value={newAllergy}
                   onChange={(e) => setNewAllergy(e.target.value)}
                   onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addAllergy())}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter allergy and press Enter"
                 />
                 <button
@@ -476,7 +476,7 @@ export function PatientRecordForm({
                   value={newMedication}
                   onChange={(e) => setNewMedication(e.target.value)}
                   onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addMedication())}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter medication and press Enter"
                 />
                 <button
@@ -517,14 +517,14 @@ export function PatientRecordForm({
                     type="text"
                     value={newMedicalHistory.condition}
                     onChange={(e) => setNewMedicalHistory({ ...newMedicalHistory, condition: e.target.value })}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     placeholder="Condition"
                   />
                   <input
                     type="date"
                     value={newMedicalHistory.started}
                     onChange={(e) => setNewMedicalHistory({ ...newMedicalHistory, started: e.target.value })}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   />
                 </div>
                 <div className="grid md:grid-cols-2 gap-3">
@@ -532,14 +532,14 @@ export function PatientRecordForm({
                     type="date"
                     value={newMedicalHistory.ended}
                     onChange={(e) => setNewMedicalHistory({ ...newMedicalHistory, ended: e.target.value })}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     placeholder="Ended (optional)"
                   />
                   <input
                     type="text"
                     value={newMedicalHistory.notes}
                     onChange={(e) => setNewMedicalHistory({ ...newMedicalHistory, notes: e.target.value })}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     placeholder="Notes (optional)"
                   />
                 </div>
@@ -586,13 +586,13 @@ export function PatientRecordForm({
                   type="date"
                   value={newDoctorNote.date}
                   onChange={(e) => setNewDoctorNote({ ...newDoctorNote, date: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 />
                 <input
                   type="text"
                   value={newDoctorNote.doctor}
                   onChange={(e) => setNewDoctorNote({ ...newDoctorNote, doctor: e.target.value })}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   placeholder="Doctor Name"
                 />
               </div>
@@ -600,7 +600,7 @@ export function PatientRecordForm({
                 value={newDoctorNote.report}
                 onChange={(e) => setNewDoctorNote({ ...newDoctorNote, report: e.target.value })}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Doctor's Report"
               />
               <button
@@ -651,7 +651,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.insurance_provider}
                 onChange={(e) => setFormData({ ...formData, insurance_provider: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter insurance provider"
               />
             </div>
@@ -664,7 +664,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.insurance_number}
                 onChange={(e) => setFormData({ ...formData, insurance_number: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter insurance number"
               />
             </div>
@@ -677,7 +677,7 @@ export function PatientRecordForm({
                 type="text"
                 value={formData.referral_source}
                 onChange={(e) => setFormData({ ...formData, referral_source: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="How did they hear about us?"
               />
             </div>
@@ -689,7 +689,7 @@ export function PatientRecordForm({
               <select
                 value={formData.preferred_language}
                 onChange={(e) => setFormData({ ...formData, preferred_language: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
               >
                 <option value="en">English</option>
                 <option value="tw">Twi</option>
@@ -707,7 +707,7 @@ export function PatientRecordForm({
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={4}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter any additional notes"
               />
             </div>

@@ -482,7 +482,7 @@ function AppointmentPaymentContent() {
                     setCardErrors({});
                   }}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="">Select payment method</option>
                   <option value="card">Card (Paystack)</option>
@@ -511,7 +511,7 @@ function AppointmentPaymentContent() {
                       }}
                       maxLength={10}
                       placeholder="0244123456 or 0204123456 or 0274123456"
-                      className={`w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                      className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                         phoneError 
                           ? "border-red-500 dark:border-red-500" 
                           : "border-gray-300 dark:border-gray-600"
@@ -539,7 +539,7 @@ function AppointmentPaymentContent() {
                       <select
                         value={selectedBank}
                         onChange={(e) => setSelectedBank(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                       >
                         <option value="">Select a bank</option>
                         {GHANAIAN_BANKS.map((bank) => (
@@ -564,7 +564,7 @@ function AppointmentPaymentContent() {
                         if (accountError) setAccountError("");
                       }}
                       placeholder="Enter your account number"
-                      className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                      className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                         accountError 
                           ? "border-red-500 dark:border-red-500" 
                           : "border-gray-300 dark:border-gray-600"
@@ -584,7 +584,7 @@ function AppointmentPaymentContent() {
                       onChange={(e) => setBankTransferNotes(e.target.value)}
                       placeholder="Any additional information for the transfer..."
                       rows={3}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     />
                   </div>
                 </div>
@@ -621,7 +621,7 @@ function AppointmentPaymentContent() {
                       }}
                       placeholder="1234 5678 9012 3456"
                       maxLength={19}
-                      className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                      className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                         cardErrors.cardNumber 
                           ? "border-red-500 dark:border-red-500" 
                           : "border-gray-300 dark:border-gray-600"
@@ -654,7 +654,7 @@ function AppointmentPaymentContent() {
                         }}
                         placeholder="MM/YY"
                         maxLength={5}
-                        className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                        className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                           cardErrors.cardExpiry 
                             ? "border-red-500 dark:border-red-500" 
                             : "border-gray-300 dark:border-gray-600"
@@ -683,7 +683,7 @@ function AppointmentPaymentContent() {
                           }}
                           placeholder="••••"
                           maxLength={6}
-                          className={`w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                          className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                             cardErrors.cardPin 
                               ? "border-red-500 dark:border-red-500" 
                               : "border-gray-300 dark:border-gray-600"
@@ -717,7 +717,7 @@ function AppointmentPaymentContent() {
                         }
                       }}
                       placeholder="John Doe"
-                      className={`w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:text-white ${
+                      className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                         cardErrors.cardName 
                           ? "border-red-500 dark:border-red-500" 
                           : "border-gray-300 dark:border-gray-600"
