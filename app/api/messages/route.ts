@@ -83,6 +83,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get sender's role
+    const senderRole = await getUserRole();
+    
+    // If sender is a patient (role="user"), check recipient is not a patient
+    if (senderRole === "user") {
+      // @ts-ignore - Supabase type inference issue with users table
+      const { data: recipient } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", recipient_id)
+        .single();
+
+      const typedRecipient = recipient as { role: string } | null;
+
+      if (!typedRecipient) {
+        return NextResponse.json(
+          { error: "Recipient not found" },
+          { status: 404 }
+        );
+      }
+
+      // Block patient-to-patient messaging
+      if (typedRecipient.role === "user") {
+        return NextResponse.json(
+          { error: "Patients can only message staff members. Please contact a staff member for assistance." },
+          { status: 403 }
+        );
+      }
+    }
+
     // @ts-ignore - Supabase type inference issue with messages table
     const { data: message, error } = await supabase
       .from("messages")

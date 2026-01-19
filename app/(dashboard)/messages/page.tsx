@@ -75,14 +75,17 @@ export default function MessagesPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to send message");
+        // Show user-friendly error message
+        alert(data.error || "Failed to send message");
+        setSending(false);
+        return;
       }
 
       setShowCompose(false);
       setComposeForm({ recipient_email: "", subject: "", content: "", appointment_id: "" });
       fetchMessages();
     } catch (error: any) {
-      alert(error.message);
+      alert(error.message || "An error occurred while sending the message");
     } finally {
       setSending(false);
     }
