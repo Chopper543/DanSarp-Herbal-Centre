@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ProfileAvatar } from "@/components/dashboard/ProfileAvatar";
 import { UserRatingDisplay } from "@/components/dashboard/UserRatingDisplay";
-import { Edit, Mail, Phone, FileText, CheckCircle, XCircle } from "lucide-react";
+import { Edit, Mail, Phone, FileText, CheckCircle, XCircle, Shield } from "lucide-react";
 import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
 
 export default function ProfilePage() {
@@ -65,13 +65,22 @@ export default function ProfilePage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Profile
           </h1>
-          <Link
-            href="/profile/edit"
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
-          >
-            <Edit className="w-4 h-4" />
-            Edit Profile
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/settings/security"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+            >
+              <Shield className="w-4 h-4" />
+              Security
+            </Link>
+            <Link
+              href="/profile/edit"
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+              Edit Profile
+            </Link>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 border border-gray-200 dark:border-gray-700">
@@ -96,17 +105,30 @@ export default function ProfilePage() {
                   />
                 </div>
               )}
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                 {user?.email_verified ? (
-                  <>
+                  <div className="flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-green-500" />
                     <span>Email Verified</span>
-                  </>
+                  </div>
                 ) : (
-                  <>
+                  <div className="flex items-center gap-2">
                     <XCircle className="w-4 h-4 text-yellow-500" />
                     <span>Email Not Verified</span>
-                  </>
+                  </div>
+                )}
+                {user?.phone && (
+                  user?.phone_verified ? (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <span>Phone Verified</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-yellow-500" />
+                      <span>Phone Not Verified</span>
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -129,8 +151,15 @@ export default function ProfilePage() {
                 {user?.phone && (
                   <div className="flex items-center gap-3">
                     <Phone className="w-5 h-5 text-gray-400" />
-                    <div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Phone</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Phone</p>
+                        {user?.phone_verified ? (
+                          <CheckCircle className="w-4 h-4 text-green-500" title="Phone Verified" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-yellow-500" title="Phone Not Verified" />
+                        )}
+                      </div>
                       <p className="text-gray-900 dark:text-white">{user?.phone}</p>
                     </div>
                   </div>

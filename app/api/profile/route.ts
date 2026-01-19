@@ -4,12 +4,30 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { searchParams } = new URL(request.url);
+    const requestedUserId = searchParams.get("user_id");
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // If user_id is provided, check if requester is authorized
+    let userId: string;
+    if (requestedUserId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      
+      // Allow if requesting own data or if no auth (for login flow)
+      if (user && user.id !== requestedUserId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      userId = requestedUserId;
+    } else {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      userId = user.id;
     }
 
     // Fetch user data
@@ -17,7 +35,7 @@ export async function GET(request: NextRequest) {
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("*")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
 
     if (userError) {
@@ -28,7 +46,7 @@ export async function GET(request: NextRequest) {
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
 
     if (profileError && profileError.code !== "PGRST116") {

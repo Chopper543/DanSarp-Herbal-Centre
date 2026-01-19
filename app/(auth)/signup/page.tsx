@@ -230,6 +230,7 @@ export default function SignupPage() {
           phone: phoneNumber, 
           full_name: storedFullName,
           email: storedEmail,
+          phone_verified: true, // Phone was verified via OTP
         })
         .eq("id", user.id);
 
