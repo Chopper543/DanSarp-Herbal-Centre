@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,9 +13,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userRole = await getUserRole();
+    const isUserAdmin = userRole && isAdmin(userRole);
+
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get("type") || "inbox"; // inbox, sent, or appointment
+    const type = searchParams.get("type") || (isUserAdmin ? "all" : "inbox"); // inbox, sent, all (admin only), or appointment
     const appointmentId = searchParams.get("appointment_id");
+    const unreadOnly = searchParams.get("unread_only") === "true";
 
     // @ts-ignore - Supabase type inference issue with messages table
     let query = supabase
@@ -25,7 +30,10 @@ export async function GET(request: NextRequest) {
         recipient:users!messages_recipient_id_fkey(full_name, email)
       `);
 
-    if (type === "inbox") {
+    // Admins can see all messages, regular users see only their own
+    if (isUserAdmin && type === "all") {
+      // Admin viewing all messages - no filter
+    } else if (type === "inbox") {
       query = query.eq("recipient_id", user.id);
     } else if (type === "sent") {
       query = query.eq("sender_id", user.id);
@@ -33,6 +41,10 @@ export async function GET(request: NextRequest) {
 
     if (appointmentId) {
       query = query.eq("appointment_id", appointmentId);
+    }
+
+    if (unreadOnly) {
+      query = query.eq("is_read", false);
     }
 
     // @ts-ignore - Supabase type inference issue with messages table

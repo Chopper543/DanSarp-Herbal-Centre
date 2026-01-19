@@ -61,10 +61,14 @@ export default function AdminLayout({
     { href: "/admin/content", label: "Content" },
     { href: "/admin/payments", label: "Payments" },
     { href: "/admin/users", label: "Users" },
+    { href: "/admin/patient-records", label: "Patient Records" },
+    { href: "/admin/newsletter", label: "Newsletter" },
+    { href: "/admin/messages", label: "Messages" },
     // Super admin only items
     ...(userRole && isSuperAdmin(userRole)
       ? [
           { href: "/admin/admins", label: "Admin Management" },
+          { href: "/admin/invites", label: "Admin Invites" },
           { href: "/admin/system", label: "System Settings" },
         ]
       : []),

@@ -21,45 +21,44 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const userId = searchParams.get("user_id");
-    const action = searchParams.get("action");
-    const resourceType = searchParams.get("resource_type");
+    const paymentId = searchParams.get("payment_id");
+    const limit = parseInt(searchParams.get("limit") || "100");
 
     // @ts-ignore - Supabase type inference issue
     let query = supabase
-      .from("audit_logs")
+      .from("payment_ledger")
       .select(`
         *,
-        user:users!audit_logs_user_id_fkey (
+        payment:payments!payment_ledger_payment_id_fkey (
           id,
-          email,
-          full_name
+          user_id,
+          amount,
+          currency,
+          payment_method,
+          status,
+          created_at,
+          users:user_id (
+            id,
+            email,
+            full_name
+          )
         )
       `)
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
-
-    if (action) {
-      query = query.ilike("action", `%${action}%`);
-    }
-
-    if (resourceType) {
-      query = query.eq("resource_type", resourceType);
+    if (paymentId) {
+      query = query.eq("payment_id", paymentId);
     }
 
     // @ts-ignore - Supabase type inference issue
-    const { data: logs, error } = await query;
+    const { data: ledgerEntries, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ logs }, { status: 200 });
+    return NextResponse.json({ ledgerEntries }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

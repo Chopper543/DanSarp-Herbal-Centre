@@ -29,7 +29,15 @@ export async function GET(request: NextRequest) {
       // @ts-ignore - Supabase type inference issue
       const { data: record, error } = await supabase
         .from("patient_records")
-        .select("*")
+        .select(`
+          *,
+          users:user_id (
+            id,
+            email,
+            full_name,
+            phone
+          )
+        `)
         .eq("user_id", userId)
         .single();
 
@@ -210,6 +218,48 @@ export async function PUT(request: NextRequest) {
     }
 
     return NextResponse.json({ record }, { status: 200 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("user_id");
+
+    if (!userId) {
+      return NextResponse.json({ error: "user_id is required" }, { status: 400 });
+    }
+
+    const userRole = await getUserRole();
+    const isUserAdmin = userRole && isAdmin(userRole);
+
+    // Only admins can delete records
+    if (!isUserAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // @ts-ignore - Supabase type inference issue
+    const { error } = await supabase
+      .from("patient_records")
+      .delete()
+      .eq("user_id", userId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ message: "Patient record deleted successfully" }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

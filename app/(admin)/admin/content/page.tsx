@@ -82,7 +82,20 @@ export default function AdminContentPage() {
             Update mission, vision, and values
           </p>
         </Link>
+
+        <Link
+          href="/admin/content/branches"
+          className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
+        >
+          <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">
+            Branches
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Manage clinic branches and locations
+          </p>
+        </Link>
       </div>
     </div>
   );
 }
+
