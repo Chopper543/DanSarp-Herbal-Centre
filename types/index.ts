@@ -134,7 +134,8 @@ export type PaymentStatus =
   | "processing"
   | "completed"
   | "failed"
-  | "refunded";
+  | "refunded"
+  | "expired";
 
 export interface Payment {
   id: string;
