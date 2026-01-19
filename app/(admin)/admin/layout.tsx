@@ -72,6 +72,8 @@ export default function AdminLayout({
   const superAdminItems = [
     { href: "/admin/admins", label: "Admin Management" },
     { href: "/admin/invites", label: "Admin Invites" },
+    { href: "/admin/audit-logs", label: "Audit Logs" },
+    { href: "/admin/database", label: "Database Tools" },
     { href: "/admin/system", label: "System Settings" },
   ];
 
