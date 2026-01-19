@@ -3,13 +3,21 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Star, Edit, Trash2, CheckCircle, Clock } from "lucide-react";
+import { Star, Edit, Trash2, CheckCircle, Clock, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 
 export default function ReviewsPage() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    rating: 0,
+    title: "",
+    content: "",
+  });
+  const [hoveredRating, setHoveredRating] = useState(0);
   const router = useRouter();
   const supabase = createClient();
 
@@ -69,6 +77,48 @@ export default function ReviewsPage() {
     }
   }
 
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault();
+    
+    if (!formData.rating || !formData.title.trim() || !formData.content.trim()) {
+      alert("Please fill in all fields including rating");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating: formData.rating,
+          title: formData.title.trim(),
+          content: formData.content.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to submit review");
+      }
+
+      // Reset form and close modal
+      setFormData({ rating: 0, title: "", content: "" });
+      setShowReviewForm(false);
+      setHoveredRating(0);
+      
+      // Refresh reviews list
+      fetchReviews();
+      
+      alert("Review submitted successfully! It will be visible after admin approval.");
+    } catch (error: any) {
+      alert("Failed to submit review: " + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -82,25 +132,149 @@ export default function ReviewsPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">My Reviews</h1>
-          <Link
-            href="/reviews"
-            className="px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
-          >
-            View All Reviews
-          </Link>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowReviewForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Write Review
+            </button>
+            <Link
+              href="/reviews"
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+            >
+              View All Reviews
+            </Link>
+          </div>
         </div>
+
+        {/* Review Submission Form Modal */}
+        {showReviewForm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Write a Review
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowReviewForm(false);
+                    setFormData({ rating: 0, title: "", content: "" });
+                    setHoveredRating(0);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitReview} className="space-y-6">
+                {/* Rating Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Rating <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, rating: star })}
+                        onMouseEnter={() => setHoveredRating(star)}
+                        onMouseLeave={() => setHoveredRating(0)}
+                        className="focus:outline-none transition-transform hover:scale-110"
+                      >
+                        <Star
+                          className={`w-8 h-8 ${
+                            star <= (hoveredRating || formData.rating)
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-gray-300 dark:text-gray-600"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                    {formData.rating > 0 && (
+                      <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
+                        {formData.rating} {formData.rating === 1 ? "star" : "stars"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    required
+                    maxLength={200}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="Give your review a title..."
+                  />
+                </div>
+
+                {/* Content */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Your Review <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={formData.content}
+                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                    required
+                    rows={6}
+                    maxLength={2000}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="Share your experience with DanSarp Herbal Centre..."
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {formData.content.length}/2000 characters
+                  </p>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="flex gap-4">
+                  <button
+                    type="submit"
+                    disabled={submitting || !formData.rating || !formData.title.trim() || !formData.content.trim()}
+                    className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? "Submitting..." : "Submit Review"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowReviewForm(false);
+                      setFormData({ rating: 0, title: "", content: "" });
+                      setHoveredRating(0);
+                    }}
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {reviews.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center border border-gray-200 dark:border-gray-700">
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               You haven't submitted any reviews yet.
             </p>
-            <Link
-              href="/reviews"
-              className="inline-block px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
+            <button
+              onClick={() => setShowReviewForm(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
             >
+              <Plus className="w-4 h-4" />
               Write Your First Review
-            </Link>
+            </button>
           </div>
         ) : (
           <div className="space-y-4">
