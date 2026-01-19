@@ -145,7 +145,7 @@ export default function MessagesPage() {
                       setComposeForm({ ...composeForm, recipient_email: e.target.value })
                     }
                     required
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     placeholder="recipient@example.com"
                   />
                 </div>
@@ -160,7 +160,7 @@ export default function MessagesPage() {
                       setComposeForm({ ...composeForm, subject: e.target.value })
                     }
                     required
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   />
                 </div>
                 <div>
