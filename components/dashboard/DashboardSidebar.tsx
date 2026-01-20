@@ -18,7 +18,7 @@ import {
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac-client";
+import { getUserRole, isAdmin, isUserOnly } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 
 interface NavItem {
@@ -26,16 +26,17 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
+  userOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/appointments", label: "Appointments", icon: Calendar },
+  { href: "/appointments", label: "Appointments", icon: Calendar, userOnly: true },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/messages", label: "Messages", icon: MessageSquare },
-  { href: "/payments", label: "Payments", icon: CreditCard },
-  { href: "/my-reviews", label: "My Reviews", icon: Star },
+  { href: "/payments", label: "Payments", icon: CreditCard, userOnly: true },
+  { href: "/my-reviews", label: "My Reviews", icon: Star, userOnly: true },
   { href: "/admin", label: "Admin Panel", icon: Shield, adminOnly: true },
 ];
 
@@ -63,9 +64,18 @@ export function DashboardSidebar() {
   };
 
   // Filter nav items based on user role
-  const filteredNavItems = navItems.filter(
-    (item) => !item.adminOnly || (userRole && isAdmin(userRole))
-  );
+  const filteredNavItems = navItems.filter((item) => {
+    // Show admin-only items only to admins
+    if (item.adminOnly) {
+      return userRole && isAdmin(userRole);
+    }
+    // Hide user-only items from staff
+    if (item.userOnly) {
+      return userRole && isUserOnly(userRole);
+    }
+    // Show all other items to everyone
+    return true;
+  });
 
   return (
     <>

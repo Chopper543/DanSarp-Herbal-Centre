@@ -11,7 +11,7 @@ import { UserRatingDisplay } from "@/components/dashboard/UserRatingDisplay";
 import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificationBanner";
 import { Calendar, PlusCircle, FileText, MessageSquare, Shield } from "lucide-react";
 import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
-import { getUserRole, isAdmin, isSuperAdmin } from "@/lib/auth/rbac-client";
+import { getUserRole, isAdmin, isSuperAdmin, isUserOnly } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 
 export default function DashboardPage() {
@@ -111,7 +111,7 @@ export default function DashboardPage() {
   const userName = user?.user_metadata?.full_name || profile?.full_name || "Patient";
   const isUserAdmin = userRole && isAdmin(userRole);
   const isUserSuperAdmin = userRole && isSuperAdmin(userRole);
-  const showPatientFeatures = !isUserAdmin; // Hide patient features for all admins
+  const showPatientFeatures = isUserOnly(userRole); // Hide patient features for all staff
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">

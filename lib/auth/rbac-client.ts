@@ -40,3 +40,7 @@ export function isAdmin(userRole: UserRole | null): boolean {
 export function isSuperAdmin(userRole: UserRole | null): boolean {
   return userRole === "super_admin";
 }
+
+export function isUserOnly(userRole: UserRole | null): boolean {
+  return userRole === "user";
+}

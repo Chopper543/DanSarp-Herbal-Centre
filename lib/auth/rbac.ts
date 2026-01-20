@@ -39,6 +39,10 @@ export function isSuperAdmin(userRole: UserRole | null): boolean {
   return userRole === "super_admin";
 }
 
+export function isUserOnly(userRole: UserRole | null): boolean {
+  return userRole === "user";
+}
+
 export async function requireAuth(requiredRoles?: UserRole[]) {
   const supabase = await createClient();
   const {

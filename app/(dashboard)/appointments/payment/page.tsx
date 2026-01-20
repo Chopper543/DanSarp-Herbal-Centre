@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CreditCard, Calendar, MapPin, FileText, AlertCircle, CheckCircle, Phone, Building2, Lock } from "lucide-react";
+import { getUserRole, isUserOnly } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 import { format } from "date-fns";
 import { 
   validateGhanaPhoneNumber, 
@@ -40,6 +42,8 @@ function AppointmentPaymentContent() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [processingPayment, setProcessingPayment] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [checkingRole, setCheckingRole] = useState(true);
   
   // Mobile Money state
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -64,6 +68,24 @@ function AppointmentPaymentContent() {
   const supabase = createClient();
 
   useEffect(() => {
+    async function checkRole() {
+      const role = await getUserRole();
+      setUserRole(role);
+      setCheckingRole(false);
+
+      if (!isUserOnly(role)) {
+        router.push("/dashboard");
+        return;
+      }
+    }
+    checkRole();
+  }, [router]);
+
+  useEffect(() => {
+    if (checkingRole || !isUserOnly(userRole)) {
+      return;
+    }
+
     // Load appointment data from sessionStorage
     const stored = sessionStorage.getItem('pendingAppointment');
     if (!stored) {
@@ -80,7 +102,7 @@ function AppointmentPaymentContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [checkingRole, userRole, router]);
 
   // Validate form based on payment method
   const validatePaymentForm = (): boolean => {
@@ -393,6 +415,30 @@ function AppointmentPaymentContent() {
       setProcessingPayment(false);
     }
   };
+
+  if (checkingRole) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-gray-600 dark:text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isUserOnly(userRole)) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Access Denied
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Staff members cannot make payments. Please use the admin panel.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sendAppointmentConfirmation } from "@/lib/email/resend";
 import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
+import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,15 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Check if user is a regular user (not staff)
+    const userRole = await getUserRole();
+    if (!isUserOnly(userRole)) {
+      return NextResponse.json(
+        { error: "Staff members cannot book appointments. Please use the admin panel." },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();

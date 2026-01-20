@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { ModernDatePicker } from "@/components/ui/ModernDatePicker";
 import { AlertCircle } from "lucide-react";
+import { getUserRole, isUserOnly } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 export default function AppointmentsPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -15,10 +17,30 @@ export default function AppointmentsPage() {
   const [branches, setBranches] = useState<any[]>([]);
   const [treatments, setTreatments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [checkingRole, setCheckingRole] = useState(true);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
+    async function checkRole() {
+      const role = await getUserRole();
+      setUserRole(role);
+      setCheckingRole(false);
+
+      if (!isUserOnly(role)) {
+        router.push("/dashboard");
+        return;
+      }
+    }
+    checkRole();
+  }, [router]);
+
+  useEffect(() => {
+    if (checkingRole || !isUserOnly(userRole)) {
+      return;
+    }
+
     async function fetchData() {
       const { data: branchesData } = await supabase
         .from("branches")
@@ -35,7 +57,7 @@ export default function AppointmentsPage() {
     }
 
     fetchData();
-  }, []);
+  }, [checkingRole, userRole]);
 
   const timeSlots = [
     "09:00", "10:00", "11:00", "12:00",
@@ -78,6 +100,30 @@ export default function AppointmentsPage() {
     // Redirect to payment page
     router.push('/appointments/payment');
   };
+
+  if (checkingRole) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-gray-600 dark:text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isUserOnly(userRole)) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Access Denied
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Staff members cannot book appointments. Please use the admin panel.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">

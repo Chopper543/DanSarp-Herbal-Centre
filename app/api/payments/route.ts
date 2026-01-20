@@ -4,6 +4,7 @@ import { paymentService } from "@/lib/payments/payment-service";
 import { PaystackProvider } from "@/lib/payments/providers/paystack";
 import { FlutterwaveProvider } from "@/lib/payments/providers/flutterwave";
 import { GhanaRailsProvider } from "@/lib/payments/providers/ghana-rails";
+import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 
 // Register payment providers
 paymentService.registerProvider("paystack", new PaystackProvider());
@@ -92,6 +93,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "User account setup incomplete. Please try again in a moment." },
         { status: 500 }
+      );
+    }
+
+    // Check if user is a regular user (not staff)
+    const userRole = await getUserRole();
+    if (!isUserOnly(userRole)) {
+      return NextResponse.json(
+        { error: "Staff members cannot make payments. Please use the admin panel." },
+        { status: 403 }
       );
     }
 

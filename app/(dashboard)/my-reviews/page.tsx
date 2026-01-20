@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Star, Edit, Trash2, CheckCircle, Clock, Plus, X } from "lucide-react";
+import { Star, Edit, Trash2, CheckCircle, Clock, Plus, X, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
+import { getUserRole, isUserOnly } from "@/lib/auth/rbac-client";
+import { UserRole } from "@/types";
 
 export default function ReviewsPage() {
   const [reviews, setReviews] = useState<any[]>([]);
@@ -18,12 +20,26 @@ export default function ReviewsPage() {
     content: "",
   });
   const [hoveredRating, setHoveredRating] = useState(0);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [checkingRole, setCheckingRole] = useState(true);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    fetchReviews();
-  }, []);
+    async function checkRole() {
+      const role = await getUserRole();
+      setUserRole(role);
+      setCheckingRole(false);
+
+      if (!isUserOnly(role)) {
+        router.push("/dashboard");
+        return;
+      }
+
+      fetchReviews();
+    }
+    checkRole();
+  }, [router]);
 
   async function fetchReviews() {
     try {
@@ -117,6 +133,30 @@ export default function ReviewsPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (checkingRole) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-gray-600 dark:text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isUserOnly(userRole)) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Access Denied
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Staff members cannot leave reviews. Please use the admin panel.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (loading) {
