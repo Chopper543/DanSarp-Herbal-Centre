@@ -155,9 +155,13 @@ export default function ProfilePage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm text-gray-500 dark:text-gray-400">Phone</p>
                         {user?.phone_verified ? (
-                          <CheckCircle className="w-4 h-4 text-green-500" title="Phone Verified" />
+                          <div title="Phone Verified">
+                            <CheckCircle className="w-4 h-4 text-green-500" />
+                          </div>
                         ) : (
-                          <XCircle className="w-4 h-4 text-yellow-500" title="Phone Not Verified" />
+                          <div title="Phone Not Verified">
+                            <XCircle className="w-4 h-4 text-yellow-500" />
+                          </div>
                         )}
                       </div>
                       <p className="text-gray-900 dark:text-white">{user?.phone}</p>

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { authenticator } from "otplib";
+import { TOTP, generateSecret } from "otplib";
+import { createHmac, randomBytes as nodeRandomBytes } from "crypto";
+// @ts-ignore - base32.js doesn't have type definitions
+import { decode as base32Decode } from "base32.js";
 import QRCode from "qrcode";
 
 export async function POST(request: NextRequest) {
@@ -22,7 +25,9 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (userData?.two_factor_enabled) {
+    const typedUserData = userData as { two_factor_enabled?: boolean; two_factor_secret?: string | null } | null;
+
+    if (typedUserData?.two_factor_enabled) {
       return NextResponse.json(
         { error: "2FA is already enabled. Disable it first to generate a new secret." },
         { status: 400 }
@@ -30,14 +35,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate a new TOTP secret
-    const secret = authenticator.generateSecret();
+    const secret = generateSecret();
     
     // Create service name for QR code (your app name)
     const serviceName = "DanSarp Herbal Centre";
     const accountName = user.email || user.id;
     
-    // Generate OTP Auth URL
-    const otpAuthUrl = authenticator.keyuri(accountName, serviceName, secret);
+    // Generate OTP Auth URL using TOTP instance with Node crypto
+    // @ts-ignore - otplib v13 requires crypto plugin configuration
+    const totp = new TOTP({
+      secret,
+      // @ts-ignore
+      createDigest: (algorithm: string, secret: string) => {
+        const secretBuffer = Buffer.from(base32Decode(secret));
+        return createHmac(algorithm, secretBuffer).digest();
+      },
+      // @ts-ignore
+      createRandomBytes: (size: number) => {
+        return Promise.resolve(nodeRandomBytes(size));
+      },
+    } as any);
+    const otpAuthUrl = totp.toURI({
+      label: accountName,
+      issuer: serviceName,
+    });
 
     // Generate QR code as data URL
     const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);

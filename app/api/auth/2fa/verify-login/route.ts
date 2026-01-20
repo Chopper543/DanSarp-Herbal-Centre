@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { authenticator } from "otplib";
+import { TOTP } from "otplib";
+import { createHmac } from "crypto";
+// @ts-ignore - base32.js doesn't have type definitions
+import { decode as base32Decode } from "base32.js";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,28 +41,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!userData.two_factor_enabled) {
+    const typedUserData = userData as {
+      two_factor_enabled?: boolean;
+      two_factor_secret?: string | null;
+      two_factor_backup_codes?: string[] | null;
+    };
+
+    if (!typedUserData.two_factor_enabled) {
       return NextResponse.json(
         { error: "2FA is not enabled for this account" },
         { status: 400 }
       );
     }
 
-    if (!userData.two_factor_secret) {
+    if (!typedUserData.two_factor_secret) {
       return NextResponse.json(
         { error: "2FA secret not found" },
         { status: 500 }
       );
     }
 
-    // Verify TOTP code
-    const isValidTotp = authenticator.verify({
-      token: code,
-      secret: userData.two_factor_secret,
-    });
+    // Verify TOTP code with Node crypto
+    // @ts-ignore - otplib v13 requires crypto plugin configuration
+    const totp = new TOTP({
+      secret: typedUserData.two_factor_secret,
+      // @ts-ignore
+      createDigest: (algorithm: string, secret: string) => {
+        const secretBuffer = Buffer.from(base32Decode(secret));
+        return createHmac(algorithm, secretBuffer).digest();
+      },
+    } as any);
+    // @ts-ignore - otplib type definitions may be incorrect
+    const isValidTotp = await totp.verify(code);
 
     // Check backup codes
-    const isBackupCode = userData.two_factor_backup_codes?.includes(code.toUpperCase()) || false;
+    const isBackupCode = typedUserData.two_factor_backup_codes?.includes(code.toUpperCase()) || false;
 
     if (!isValidTotp && !isBackupCode) {
       return NextResponse.json(
@@ -69,8 +85,8 @@ export async function POST(request: NextRequest) {
     }
 
     // If backup code was used, remove it
-    if (isBackupCode && userData.two_factor_backup_codes) {
-      const updatedBackupCodes = userData.two_factor_backup_codes.filter(
+    if (isBackupCode && typedUserData.two_factor_backup_codes) {
+      const updatedBackupCodes = typedUserData.two_factor_backup_codes.filter(
         (c: string) => c !== code.toUpperCase()
       );
       

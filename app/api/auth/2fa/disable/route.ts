@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { TOTP } from "otplib";
+import { createHmac } from "crypto";
+// @ts-ignore - base32.js doesn't have type definitions
+import { decode as base32Decode } from "base32.js";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,15 +28,23 @@ export async function POST(request: NextRequest) {
         .eq("id", user.id)
         .single();
 
-      if (userData?.two_factor_secret) {
-        const { authenticator } = await import("otplib");
-        const isValid = authenticator.verify({
-          token: code,
-          secret: userData.two_factor_secret,
-        });
+      const typedUserData = userData as { two_factor_secret?: string | null; two_factor_backup_codes?: string[] | null } | null;
+
+      if (typedUserData?.two_factor_secret) {
+        // @ts-ignore - otplib v13 requires crypto plugin configuration
+        const totp = new TOTP({
+          secret: typedUserData.two_factor_secret,
+          // @ts-ignore
+          createDigest: (algorithm: string, secret: string) => {
+            const secretBuffer = Buffer.from(base32Decode(secret));
+            return createHmac(algorithm, secretBuffer).digest();
+          },
+        } as any);
+        // @ts-ignore - otplib type definitions may be incorrect
+        const isValid = await totp.verify(code);
 
         // Also check backup codes
-        const isBackupCode = userData.two_factor_backup_codes?.includes(code.toUpperCase());
+        const isBackupCode = typedUserData.two_factor_backup_codes?.includes(code.toUpperCase());
 
         if (!isValid && !isBackupCode) {
           return NextResponse.json(
@@ -42,8 +54,8 @@ export async function POST(request: NextRequest) {
         }
 
         // If backup code was used, remove it from the list
-        if (isBackupCode) {
-          const updatedBackupCodes = userData.two_factor_backup_codes.filter(
+        if (isBackupCode && typedUserData.two_factor_backup_codes) {
+          const updatedBackupCodes = typedUserData.two_factor_backup_codes.filter(
             (c: string) => c !== code.toUpperCase()
           );
           

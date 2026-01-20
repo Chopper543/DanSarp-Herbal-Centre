@@ -32,11 +32,12 @@ export default async function BlogPostPage({
   const { data: author } = await supabase
     .from("users")
     .select("id, full_name, email")
-    .eq("id", post.author_id)
+    // @ts-ignore - Supabase type inference issue
+    .eq("id", (post as any).author_id)
     .single();
 
   const typedPost = {
-    ...post,
+    ...(post as any),
     author: author || null,
   } as {
     id: string;
