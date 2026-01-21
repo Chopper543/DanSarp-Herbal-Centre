@@ -117,19 +117,6 @@ export default function ProfilePage() {
                     <span>Email Not Verified</span>
                   </div>
                 )}
-                {user?.phone && (
-                  user?.phone_verified ? (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                      <span>Phone Verified</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <XCircle className="w-4 h-4 text-yellow-500" />
-                      <span>Phone Not Verified</span>
-                    </div>
-                  )
-                )}
               </div>
             </div>
           </div>
@@ -151,19 +138,8 @@ export default function ProfilePage() {
                 {user?.phone && (
                   <div className="flex items-center gap-3">
                     <Phone className="w-5 h-5 text-gray-400" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Phone</p>
-                        {user?.phone_verified ? (
-                          <div title="Phone Verified">
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                          </div>
-                        ) : (
-                          <div title="Phone Not Verified">
-                            <XCircle className="w-4 h-4 text-yellow-500" />
-                          </div>
-                        )}
-                      </div>
+                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Phone</p>
                       <p className="text-gray-900 dark:text-white">{user?.phone}</p>
                     </div>
                   </div>

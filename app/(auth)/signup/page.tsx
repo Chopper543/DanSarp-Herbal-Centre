@@ -4,10 +4,8 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { PhoneOtpVerification } from "@/components/auth/PhoneOtpVerification";
 import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { validateGhanaPhoneNumber, formatGhanaPhoneNumber } from "@/lib/payments/validation";
-import { formatPhoneForSupabase } from "@/lib/utils/phone-format";
 import { Phone, Mail, AlertCircle } from "lucide-react";
 
 export default function SignupPage() {
@@ -17,8 +15,6 @@ export default function SignupPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
-  const [verificationMethod, setVerificationMethod] = useState<"phone" | "email">("email");
-  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -47,210 +43,11 @@ export default function SignupPage() {
     setPhoneTouched(true);
     setPhoneError("");
 
+    // Only validate phone if it's provided
     if (formatted && !validateGhanaPhoneNumber(formatted)) {
       setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
-    }
-  };
-
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateGhanaPhoneNumber(phoneNumber)) {
-      setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
-      return;
-    }
-
-    if (!fullName || !email || !password) {
-      setError("Please fill in all required fields");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setPhoneError("");
-
-    try {
-      // Store signup data in sessionStorage for after OTP verification
-      sessionStorage.setItem("pendingSignup", JSON.stringify({
-        email,
-        password,
-        fullName,
-        phoneNumber,
-      }));
-
-      // Convert phone to international format for Supabase
-      const internationalPhone = formatPhoneForSupabase(phoneNumber, true); // Enable debug logging
-
-      // Debug logging
-      console.log("Phone OTP Request:", {
-        localFormat: phoneNumber,
-        internationalFormat: internationalPhone,
-        isValidE164: internationalPhone.startsWith('+') && /^\+233(24|20|27)\d{7}$/.test(internationalPhone)
-      });
-
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: internationalPhone,
-        options: {
-          channel: "sms",
-          data: {
-            full_name: fullName,
-            email: email,
-          },
-        },
-      });
-
-      if (otpError) {
-        // Enhanced error logging
-        console.error("Supabase OTP Error (Full Object):", {
-          message: otpError.message,
-          status: otpError.status,
-          code: (otpError as any).code || 'N/A',
-          name: otpError.name,
-          stack: otpError.stack,
-          fullError: otpError,
-          localFormat: phoneNumber,
-          internationalFormat: internationalPhone
-        });
-        throw otpError;
-      }
-
-      console.log("OTP sent successfully to:", internationalPhone);
-      setOtpSent(true);
-    } catch (err: any) {
-      const errorMessage = err.message || "Failed to send verification code";
-      
-      // Enhanced error logging - log complete error object
-      const internationalFormat = formatPhoneForSupabase(phoneNumber, false);
-      console.error("Full Supabase Error Object:", {
-        message: err.message,
-        status: err.status,
-        code: err.code || 'N/A',
-        name: err.name,
-        stack: err.stack,
-        fullError: err,
-        localFormat: phoneNumber,
-        internationalFormat: internationalFormat,
-        phoneLength: internationalFormat.length,
-        phoneFormat: internationalFormat
-      });
-      
-      // Check for Twilio-specific errors (60200 = Invalid parameter)
-      const isTwilioError = 
-        errorMessage.includes("60200") ||
-        errorMessage.includes("Invalid parameter") ||
-        errorMessage.includes("Twilio") ||
-        (err.code && String(err.code).includes("60200")) ||
-        (errorMessage.includes("Error sending confirmation OTP to provider") && errorMessage.includes("Invalid parameter"));
-      
-      if (isTwilioError) {
-        // Twilio error - likely phone format issue
-        const isDevelopment = process.env.NODE_ENV === 'development';
-        const detailedError = isDevelopment 
-          ? `[DEV] Twilio Error: ${errorMessage}\n\nPhone number format issue detected.\n` +
-            `Phone sent: ${internationalFormat} (${internationalFormat.length} characters)\n` +
-            `Expected: +233XXXXXXXXX (13 characters)\n` +
-            `Please check the phone number format.`
-          : "Invalid phone number format. Please ensure:\n\n" +
-            "1. Phone number is in correct format: 0244123456 or +233244123456\n" +
-            "2. Number has exactly 10 digits (local) or 13 characters (international)\n" +
-            "3. No spaces or special characters\n\n" +
-            "If the problem persists, please contact support.";
-        
-        setError(detailedError);
-      }
-      // Check for specific phone provider errors (more specific detection)
-      else if (
-        errorMessage.includes("Unsupported phone provider") ||
-        errorMessage.includes("phone provider not configured") ||
-        errorMessage.includes("sms_provider_not_configured") ||
-        errorMessage.includes("phone_provider_not_configured") ||
-        errorMessage.toLowerCase().includes("sms provider") ||
-        (err.status === 400 && errorMessage.toLowerCase().includes("phone") && errorMessage.toLowerCase().includes("provider")) ||
-        (err.status === 500 && errorMessage.toLowerCase().includes("provider") && errorMessage.toLowerCase().includes("phone"))
-      ) {
-        // Show actual error in development, user-friendly message in production
-        const isDevelopment = process.env.NODE_ENV === 'development';
-        const detailedError = isDevelopment 
-          ? `[DEV] ${errorMessage}\n\nPhone authentication may not be configured. Check Supabase settings.`
-          : "Phone authentication is not configured. Please ensure:\n\n" +
-            "1. Phone auth is enabled in Supabase Dashboard → Authentication → Providers → Phone\n" +
-            "2. SMS provider (Twilio/Vonage) is configured in Supabase\n" +
-            "3. Phone number format is correct (+233XXXXXXXXX)\n\n" +
-            "If you're the administrator, check your Supabase project settings.";
-        
-        setError(detailedError);
-      } else {
-        // Show actual error message for other errors
-        setError(errorMessage);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePhoneVerified = async () => {
-    // After phone OTP verification, update user with email and password
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Get stored signup data
-      const storedData = sessionStorage.getItem("pendingSignup");
-      if (!storedData) {
-        throw new Error("Signup data not found");
-      }
-
-      const { email: storedEmail, password: storedPassword, fullName: storedFullName } = JSON.parse(storedData);
-
-      // Get the current user (created by OTP verification)
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error("User not found after verification");
-      }
-
-      // Update user with email and password
-      const { error: updateError } = await supabase.auth.updateUser({
-        email: storedEmail,
-        password: storedPassword,
-        data: {
-          full_name: storedFullName,
-          phone: phoneNumber,
-        },
-      });
-
-      if (updateError) throw updateError;
-
-      // Update users table
-      // @ts-ignore - Supabase type inference issue with users table
-      const { error: dbError } = await supabase
-        .from("users")
-        // @ts-ignore - Supabase type inference issue
-        .update({ 
-          phone: phoneNumber, 
-          full_name: storedFullName,
-          email: storedEmail,
-          phone_verified: true, // Phone was verified via OTP
-        })
-        .eq("id", user.id);
-
-      if (dbError) {
-        console.error("Failed to update users table:", dbError);
-        // Don't throw - user is already created
-      }
-
-      // Clear stored data
-      sessionStorage.removeItem("pendingSignup");
-
-      setSuccess(true);
-      setTimeout(() => {
-        router.push("/dashboard");
-        router.refresh();
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || "Failed to complete signup");
-    } finally {
-      setLoading(false);
+    } else {
+      setPhoneError("");
     }
   };
 
@@ -258,32 +55,105 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setPhoneError("");
 
-    if (!validateGhanaPhoneNumber(phoneNumber)) {
-      setPhoneError("Please enter a valid 10-digit Ghana phone number");
+    // Get password and email from form element directly to handle browser autofill
+    const form = e.currentTarget as HTMLFormElement;
+    const passwordInput = form.querySelector('#password') as HTMLInputElement;
+    const emailInput = form.querySelector('#email') as HTMLInputElement;
+    const actualPassword = passwordInput?.value || password || "";
+    const actualEmail = emailInput?.value || email || "";
+    
+    // Validate required fields
+    const trimmedEmail = (actualEmail || "").trim();
+    const trimmedFullName = (fullName || "").trim();
+    const trimmedPassword = actualPassword.trim();
+
+    // Debug logging (can be removed in production)
+    console.log("Form submission:", {
+      email: trimmedEmail ? "***" : "empty",
+      fullName: trimmedFullName ? "***" : "empty",
+      password: trimmedPassword ? "***" : "empty",
+      passwordLength: trimmedPassword.length,
+      rawPassword: actualPassword ? "has value" : "no value",
+      rawEmail: actualEmail ? "has value" : "no value",
+      fromState: password ? "state" : "no state",
+      fromDOM: passwordInput?.value ? "DOM" : "no DOM",
+      emailFromState: email ? "state" : "no state",
+      emailFromDOM: emailInput?.value ? "DOM" : "no DOM"
+    });
+
+    if (!trimmedEmail) {
+      setError("Email is required");
+      setLoading(false);
+      return;
+    }
+
+    if (!trimmedFullName) {
+      setError("Full name is required");
+      setLoading(false);
+      return;
+    }
+
+    if (!trimmedPassword || trimmedPassword.length === 0) {
+      setError("Password is required");
+      setLoading(false);
+      return;
+    }
+
+    if (trimmedPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      setLoading(false);
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setError("Please enter a valid email address");
+      setLoading(false);
+      return;
+    }
+
+    // Validate phone only if provided
+    if (phoneNumber.trim() && !validateGhanaPhoneNumber(phoneNumber)) {
+      setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
       setLoading(false);
       return;
     }
 
     try {
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email,
-        password,
-        phone: phoneNumber,
+      // Prepare signup data - only include phone if provided
+      const signupData: any = {
+        email: trimmedEmail,
+        password: trimmedPassword,
         options: {
           data: {
-            full_name: fullName,
-            phone: phoneNumber,
+            full_name: trimmedFullName,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
-      });
+      };
 
-      if (signupError) throw signupError;
+      // Only add phone if provided
+      if (phoneNumber.trim()) {
+        signupData.phone = phoneNumber;
+        signupData.options.data.phone = phoneNumber;
+      }
+
+      const { data, error: signupError } = await supabase.auth.signUp(signupData);
+
+      if (signupError) {
+        // Provide more specific error messages
+        if (signupError.message.includes("fetch") || signupError.message.includes("network")) {
+          throw new Error("Network error: Unable to connect to the server. Please check your internet connection and try again.");
+        }
+        throw signupError;
+      }
 
       if (data.user) {
-        // Update users table with phone number
-        if (data.user.id) {
+        // Update users table with phone number if provided
+        if (data.user.id && phoneNumber.trim()) {
           // @ts-ignore - Supabase type inference issue with users table
           const { error: dbError } = await supabase
             .from("users")
@@ -299,7 +169,39 @@ export default function SignupPage() {
         setSuccess(true);
       }
     } catch (err: any) {
-      setError(err.message || "Failed to sign up");
+      // Enhanced error handling with better messages
+      let errorMessage = "Failed to sign up";
+      
+      if (err.message) {
+        // Check for specific error types
+        if (err.message.toLowerCase().includes("fetch") || 
+            err.message.toLowerCase().includes("network") ||
+            err.message.toLowerCase().includes("failed to fetch")) {
+          errorMessage = "Network error: Unable to connect to the server. Please check your internet connection and try again. If the problem persists, the server may be temporarily unavailable.";
+        } else if (err.message.toLowerCase().includes("user already registered") ||
+                   err.message.toLowerCase().includes("already been registered") ||
+                   err.message.toLowerCase().includes("email address has already") ||
+                   err.message.toLowerCase().includes("email already exists")) {
+          // Check for duplicate email errors first (before generic email check)
+          errorMessage = "An account with this email already exists. Please sign in instead.";
+        } else if (err.message.toLowerCase().includes("email")) {
+          errorMessage = err.message;
+        } else if (err.message.toLowerCase().includes("password")) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = err.message;
+        }
+      } else if (err instanceof TypeError) {
+        errorMessage = "Network error: Unable to connect to the server. Please check your internet connection.";
+      }
+      
+      console.error("Signup error details:", {
+        error: err,
+        message: err.message,
+        name: err.name,
+        stack: err.stack
+      });
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -309,7 +211,7 @@ export default function SignupPage() {
     setError(errorMessage);
   };
 
-  if (success && verificationMethod === "email") {
+  if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
@@ -329,47 +231,6 @@ export default function SignupPage() {
     );
   }
 
-  if (otpSent && verificationMethod === "phone") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-          <h1 className="text-3xl font-bold text-center mb-2 text-primary-700 dark:text-primary-400">
-            Verify Phone Number
-          </h1>
-          <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
-            Enter the verification code sent to your phone
-          </p>
-
-          <PhoneOtpVerification
-            phoneNumber={phoneNumber}
-            onVerified={handlePhoneVerified}
-            onError={setError}
-          />
-
-          {error && (
-            <div className="mt-4 flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setOtpSent(false);
-                setError(null);
-              }}
-              className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-            >
-              Change phone number
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
       <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
@@ -380,7 +241,7 @@ export default function SignupPage() {
           Join DanSarp Herbal Centre
         </p>
 
-        <form onSubmit={verificationMethod === "email" ? handleEmailSignup : handleSendOtp} className="space-y-6">
+        <form onSubmit={handleEmailSignup} className="space-y-6">
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2">
               <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -411,8 +272,28 @@ export default function SignupPage() {
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // Clear any previous email errors when user types
+                if (error && error.includes("email")) {
+                  setError(null);
+                }
+              }}
+              onInput={(e) => {
+                // Fallback for autofill - update state when browser fills the field
+                const target = e.target as HTMLInputElement;
+                if (target.value !== email) {
+                  setEmail(target.value);
+                }
+              }}
+              onBlur={(e) => {
+                // Ensure email is captured on blur
+                if (e.target.value !== email) {
+                  setEmail(e.target.value);
+                }
+              }}
               required
+              autoComplete="email"
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
               placeholder="your@email.com"
             />
@@ -420,7 +301,7 @@ export default function SignupPage() {
 
           <div>
             <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Phone Number <span className="text-red-500">*</span>
+              Phone Number <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
             </label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -431,7 +312,6 @@ export default function SignupPage() {
                 onChange={handlePhoneChange}
                 onBlur={() => setPhoneTouched(true)}
                 maxLength={13}
-                required
                 className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
                   phoneError && phoneTouched
                     ? "border-red-500 dark:border-red-500"
@@ -444,7 +324,7 @@ export default function SignupPage() {
               <p className="mt-1 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
             )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Enter a Ghana phone number: 0244123456 or +233244123456
+              Optional: Enter a Ghana phone number: 0244123456 or +233244123456
             </p>
           </div>
 
@@ -456,9 +336,29 @@ export default function SignupPage() {
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                // Clear any previous password errors when user types
+                if (error && error.includes("password")) {
+                  setError(null);
+                }
+              }}
+              onInput={(e) => {
+                // Fallback for autofill - update state when browser fills the field
+                const target = e.target as HTMLInputElement;
+                if (target.value !== password) {
+                  setPassword(target.value);
+                }
+              }}
+              onBlur={(e) => {
+                // Ensure password is captured on blur
+                if (e.target.value !== password) {
+                  setPassword(e.target.value);
+                }
+              }}
               required
               minLength={6}
+              autoComplete="new-password"
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
               placeholder="••••••••"
             />
@@ -467,60 +367,12 @@ export default function SignupPage() {
             </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Verification Method
-            </label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                <input
-                  type="radio"
-                  name="verificationMethod"
-                  value="email"
-                  checked={verificationMethod === "email"}
-                  onChange={(e) => setVerificationMethod(e.target.value as "email" | "phone")}
-                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                />
-                <div className="flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-gray-400" />
-                  <div>
-                    <span className="font-medium text-gray-900 dark:text-white">Email Verification</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Verify via email link</p>
-                  </div>
-                </div>
-              </label>
-              <label className="flex items-center gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                <input
-                  type="radio"
-                  name="verificationMethod"
-                  value="phone"
-                  checked={verificationMethod === "phone"}
-                  onChange={(e) => setVerificationMethod(e.target.value as "email" | "phone")}
-                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                />
-                <div className="flex items-center gap-2">
-                  <Phone className="w-5 h-5 text-gray-400" />
-                  <div>
-                    <span className="font-medium text-gray-900 dark:text-white">Phone OTP</span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Verify via SMS code</p>
-                  </div>
-                </div>
-              </label>
-            </div>
-          </div>
-
           <button
             type="submit"
-            disabled={loading || (phoneTouched && !validateGhanaPhoneNumber(phoneNumber))}
+            disabled={loading || (phoneTouched && phoneNumber.trim() !== "" && !validateGhanaPhoneNumber(phoneNumber))}
             className="w-full bg-primary-600 hover:bg-primary-950 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading
-              ? verificationMethod === "phone"
-                ? "Sending code..."
-                : "Creating account..."
-              : verificationMethod === "phone"
-              ? "Send Verification Code"
-              : "Sign Up"}
+            {loading ? "Creating account..." : "Sign Up"}
           </button>
         </form>
 

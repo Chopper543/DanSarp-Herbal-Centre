@@ -13,7 +13,6 @@ export interface User {
   phone: string | null;
   role: UserRole;
   email_verified: boolean;
-  phone_verified: boolean;
   two_factor_enabled: boolean;
   two_factor_secret?: string | null;
   two_factor_backup_codes?: string[] | null;

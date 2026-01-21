@@ -39,7 +39,6 @@ async function ensureUserExists(supabase: any, authUser: any) {
       full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
       phone: authUser.phone || authUser.user_metadata?.phone || null,
       email_verified: authUser.email_confirmed_at !== null,
-      phone_verified: authUser.phone_confirmed_at !== null,
     })
     .select()
     .single();

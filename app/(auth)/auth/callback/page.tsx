@@ -37,13 +37,11 @@ function AuthCallbackContent() {
           // Update users table with phone if available from metadata
           const phone = data.user.phone || data.user.user_metadata?.phone;
           const fullName = data.user.user_metadata?.full_name || data.user.user_metadata?.name;
-          const phoneVerified = data.user.phone_confirmed_at !== null;
 
-          if (phone || fullName || phoneVerified !== undefined) {
+          if (phone || fullName) {
             const updates: any = {};
             if (phone) updates.phone = phone;
             if (fullName) updates.full_name = fullName;
-            if (phoneVerified !== undefined) updates.phone_verified = phoneVerified;
 
             // @ts-ignore - Supabase type inference issue with users table
             await supabase
