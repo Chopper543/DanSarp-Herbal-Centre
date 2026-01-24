@@ -48,7 +48,7 @@ export default function ReviewsPage() {
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <ScrollReveal>
-            <h1 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
               Patient Reviews
             </h1>
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12">
@@ -59,7 +59,7 @@ export default function ReviewsPage() {
           {loading ? (
             <div className="text-center py-12">Loading reviews...</div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {reviews.map((review, index) => (
                 <ScrollReveal key={review.id} delay={index * 0.1}>
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 hover:shadow-lg transition-shadow">
@@ -86,7 +86,7 @@ export default function ReviewsPage() {
                     <h3 className="font-semibold text-lg mb-2 text-gray-900 dark:text-white">
                       {review.title}
                     </h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-4">
+                    <p className="break-words text-gray-600 dark:text-gray-400 mb-4">
                       {review.content}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-gray-500">

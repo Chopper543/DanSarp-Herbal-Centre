@@ -29,9 +29,9 @@ export default function DashboardLayout({
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900">
       <DashboardSidebar />
-      <div className="lg:pl-64">
+      <div className="pl-14 lg:pl-64">
         <DashboardHeader />
         <main className="min-h-screen">{children}</main>
       </div>

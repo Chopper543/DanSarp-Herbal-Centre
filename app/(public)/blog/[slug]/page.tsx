@@ -117,7 +117,7 @@ export default async function BlogPostPage({
 
           {/* Article Header */}
           <header className="mb-8">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-gray-900 dark:text-white">
               {typedPost.title}
             </h1>
 
@@ -147,7 +147,7 @@ export default async function BlogPostPage({
           </header>
 
           {/* Article Content */}
-          <article className="prose prose-lg dark:prose-invert max-w-none">
+          <article className="prose prose-base sm:prose-lg dark:prose-invert max-w-none">
             <div
               className="blog-content text-gray-700 dark:text-gray-300 leading-relaxed"
               dangerouslySetInnerHTML={{

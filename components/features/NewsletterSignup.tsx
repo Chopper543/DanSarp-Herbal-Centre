@@ -38,7 +38,7 @@ export function NewsletterSignup() {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-md mx-auto">
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <input
           type="email"
           value={email}
@@ -51,7 +51,7 @@ export function NewsletterSignup() {
         <button
           type="submit"
           disabled={loading || success}
-          className="bg-white text-primary-600 hover:bg-primary-50 px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          className="w-full sm:w-auto bg-white text-primary-600 hover:bg-primary-50 px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <>

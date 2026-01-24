@@ -32,7 +32,7 @@ export default async function BranchesPage() {
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <ScrollReveal>
-            <h1 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
               Our Branches
             </h1>
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12">
@@ -40,7 +40,7 @@ export default async function BranchesPage() {
             </p>
           </ScrollReveal>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
             {typedBranches.map((branch, index) => {
               // Handle coordinates - PostgreSQL POINT can be returned as {x, y} or {lat, lng}
               let coordinates: { lat: number; lng: number } | null = null;
@@ -63,7 +63,7 @@ export default async function BranchesPage() {
                     {imageUrls.length > 0 ? (
                       <div className="grid grid-cols-2 gap-1 h-48">
                         {imageUrls.slice(0, 2).map((imageUrl, imgIndex) => (
-                          <div key={imgIndex} className="relative overflow-hidden">
+                          <div key={imgIndex} className="relative min-h-0 overflow-hidden">
                             <Image
                               src={imageUrl}
                               alt={`${branch.name} - Photo ${imgIndex + 1}`}
@@ -88,17 +88,17 @@ export default async function BranchesPage() {
                       <div className="space-y-3 mb-6">
                         <div>
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Address</p>
-                          <p className="text-gray-600 dark:text-gray-400">{branch.address}</p>
+                          <p className="break-words text-gray-600 dark:text-gray-400">{branch.address}</p>
                         </div>
                         
                         <div>
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone</p>
-                          <p className="text-gray-600 dark:text-gray-400">{branch.phone}</p>
+                          <p className="break-words text-gray-600 dark:text-gray-400">{branch.phone}</p>
                         </div>
                         
                         <div>
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</p>
-                          <p className="text-gray-600 dark:text-gray-400">{branch.email}</p>
+                          <p className="break-words text-gray-600 dark:text-gray-400">{branch.email}</p>
                         </div>
 
                         {coordinates && (
@@ -122,7 +122,7 @@ export default async function BranchesPage() {
                           </p>
                           <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                             {Object.entries(workingHours).map(([day, hours]: [string, any]) => (
-                              <div key={day} className="flex justify-between">
+                              <div key={day} className="flex flex-col sm:flex-row sm:justify-between gap-1">
                                 <span className="capitalize">{day}</span>
                                 <span>
                                   {hours.closed ? "Closed" : `${hours.open} - ${hours.close}`}

@@ -214,13 +214,13 @@ export default function SignupPage() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 text-center">
           <div className="mb-4">
             <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto">
               <Mail className="w-8 h-8 text-green-600 dark:text-green-400" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold mb-2 text-primary-700 dark:text-primary-400">
+          <h1 className="text-xl sm:text-2xl font-bold mb-2 text-primary-700 dark:text-primary-400">
             Check your email
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
@@ -233,8 +233,8 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
-      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-        <h1 className="text-3xl font-bold text-center mb-2 text-primary-700 dark:text-primary-400">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-center mb-2 text-primary-700 dark:text-primary-400">
           Create Account
         </h1>
         <p className="text-center text-gray-600 dark:text-gray-400 mb-8">

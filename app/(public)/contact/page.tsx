@@ -30,7 +30,7 @@ export default function ContactPage() {
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <ScrollReveal>
-            <h1 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
               Contact Us
             </h1>
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12">
@@ -38,7 +38,7 @@ export default function ContactPage() {
             </p>
           </ScrollReveal>
 
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid md:grid-cols-2 gap-6 md:gap-8">
             <ScrollReveal>
               <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6">
                 <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
@@ -47,19 +47,19 @@ export default function ContactPage() {
                 <div className="space-y-4">
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Address</h3>
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p className="break-words text-gray-600 dark:text-gray-400">
                       Oframase New Road, Nkawkaw
                     </p>
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Phone</h3>
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p className="break-words text-gray-600 dark:text-gray-400">
                       +233 24 690 6739
                     </p>
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">Email</h3>
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p className="break-words text-gray-600 dark:text-gray-400">
                       info@dansarpherbal.com
                     </p>
                   </div>

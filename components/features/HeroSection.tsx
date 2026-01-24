@@ -55,15 +55,15 @@ export function HeroSection() {
             transition={{ duration: 0.8 }}
             className="space-y-8"
           >
-            <h1 className="text-5xl md:text-7xl font-bold text-white mb-4">
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white mb-4">
               <span className="block mb-2">DanSarp Herbal Centre</span>
-              <span className="text-3xl md:text-5xl font-serif text-primary-200">
+              <span className="text-2xl sm:text-3xl md:text-5xl font-serif text-primary-200">
                 {displayText}
                 {isTyping && <span className="animate-pulse">|</span>}
               </span>
             </h1>
             
-            <p className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto">
+            <p className="text-lg sm:text-xl md:text-2xl text-white/90 max-w-3xl mx-auto">
               Certified Professional Herbal Clinic
               <br />
               Transforming lives through nature's healing power

@@ -23,12 +23,12 @@ export function Footer() {
                 <span>Ghana</span>
               </div>
               <div className="flex items-center gap-2 text-gray-400">
-                <Phone className="w-4 h-4" />
-                <span>+233 24 690 6739</span>
+                <Phone className="w-4 h-4 shrink-0" />
+                <span className="break-words">+233 24 690 6739</span>
               </div>
               <div className="flex items-center gap-2 text-gray-400">
-                <Mail className="w-4 h-4" />
-                <span>info@dansarpherbal.com</span>
+                <Mail className="w-4 h-4 shrink-0" />
+                <span className="break-words">info@dansarpherbal.com</span>
               </div>
             </div>
           </div>

@@ -29,7 +29,7 @@ export default async function TestimonialsPage() {
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <ScrollReveal>
-            <h1 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
               Patient Testimonials
             </h1>
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12">
@@ -37,7 +37,7 @@ export default async function TestimonialsPage() {
             </p>
           </ScrollReveal>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
             {typedTestimonials.map((testimonial, index) => (
               <ScrollReveal key={testimonial.id} delay={index * 0.1}>
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 hover:shadow-lg transition-shadow">

@@ -85,9 +85,9 @@ export default function AdminLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Left side - Logo and main nav */}
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center gap-2">
-                <Link href="/admin" className="text-xl font-bold text-primary-600 dark:text-primary-400">
+            <div className="flex items-center space-x-6 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Link href="/admin" className="text-xl font-bold text-primary-600 dark:text-primary-400 truncate">
                   Admin Panel
                 </Link>
                 {isUserSuperAdmin && (
@@ -166,7 +166,7 @@ export default function AdminLayout({
 
           {/* Mobile Navigation Menu */}
           {mobileMenuOpen && (
-            <div className="lg:hidden border-t border-gray-200 dark:border-gray-700 py-4">
+            <div className="lg:hidden border-t border-gray-200 dark:border-gray-700 py-4 max-h-[calc(100vh-5rem)] overflow-y-auto">
               <div className="space-y-1">
                 {mainNavItems.map((item) => (
                   <Link

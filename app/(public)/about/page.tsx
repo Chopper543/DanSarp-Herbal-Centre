@@ -27,7 +27,7 @@ export default async function AboutPage() {
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <ScrollReveal>
-            <h1 className="text-4xl font-bold text-center mb-12 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-12 text-gray-900 dark:text-white">
               About Us
             </h1>
           </ScrollReveal>
@@ -36,7 +36,7 @@ export default async function AboutPage() {
             <>
               <ScrollReveal delay={0.2}>
                 <section className="mb-12">
-                  <h2 className="text-3xl font-semibold mb-4 text-gray-900 dark:text-white">
+                  <h2 className="text-2xl sm:text-3xl font-semibold mb-4 text-gray-900 dark:text-white">
                     Our Mission
                   </h2>
                   <p className="text-lg text-gray-600 dark:text-gray-400">
@@ -58,7 +58,7 @@ export default async function AboutPage() {
 
               <ScrollReveal delay={0.6}>
                 <section className="mb-12">
-                  <h2 className="text-3xl font-semibold mb-4 text-gray-900 dark:text-white">
+                  <h2 className="text-2xl sm:text-3xl font-semibold mb-4 text-gray-900 dark:text-white">
                     Our Values
                   </h2>
                   <p className="text-lg text-gray-600 dark:text-gray-400">

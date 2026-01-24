@@ -35,7 +35,7 @@ export default async function GalleryPage() {
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <ScrollReveal>
-            <h1 className="text-4xl font-bold text-center mb-12 text-gray-900 dark:text-white">
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-12 text-gray-900 dark:text-white">
               Gallery
             </h1>
           </ScrollReveal>
@@ -49,7 +49,7 @@ export default async function GalleryPage() {
                   <h2 className="text-3xl font-semibold mb-8 text-gray-900 dark:text-white capitalize">
                     {type} Gallery
                   </h2>
-                  <div className="grid md:grid-cols-3 gap-6">
+                  <div className="grid md:grid-cols-3 gap-4 sm:gap-6">
                     {items.map((item) => (
                       <div
                         key={item.id}

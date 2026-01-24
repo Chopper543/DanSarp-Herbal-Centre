@@ -62,7 +62,7 @@ export default async function HomePage() {
     created_at: string;
   }> | null) || [];
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-hidden">
       <Navbar />
       
       <HeroSection />
@@ -95,7 +95,7 @@ export default async function HomePage() {
               },
             ].map((feature, index) => (
               <ScrollReveal key={index} delay={index * 0.2}>
-                <div className="bg-gray-50 dark:bg-gray-800 p-8 rounded-2xl hover:shadow-lg transition-shadow">
+                <div className="bg-gray-50 dark:bg-gray-800 p-6 sm:p-8 rounded-2xl hover:shadow-lg transition-shadow">
                   <div className="text-4xl mb-4">{feature.icon}</div>
                   <h3 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
                     {feature.title}
@@ -114,7 +114,7 @@ export default async function HomePage() {
       <section className="py-16 bg-gray-50 dark:bg-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
               {[
                 {
                   icon: Shield,
@@ -159,7 +159,7 @@ export default async function HomePage() {
         <section className="py-20 bg-white dark:bg-gray-900">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ScrollReveal>
-              <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
                 Our Services
               </h2>
               <p className="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
@@ -167,7 +167,7 @@ export default async function HomePage() {
               </p>
             </ScrollReveal>
             
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {typedTreatments.map((treatment, index) => (
                 <ScrollReveal key={treatment.id} delay={index * 0.1}>
                   <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
@@ -203,7 +203,7 @@ export default async function HomePage() {
       <section className="py-20 bg-gradient-to-r from-primary-600 to-primary-800 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
               {[
                 {
                   icon: Users,
@@ -229,7 +229,7 @@ export default async function HomePage() {
                 <ScrollReveal key={index} delay={index * 0.1}>
                   <div className="text-center">
                     <stat.icon className="w-12 h-12 mx-auto mb-4 text-primary-200" />
-                    <div className="text-4xl md:text-5xl font-bold mb-2">
+                    <div className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
                       {stat.number}
                     </div>
                     <div className="text-primary-100 text-sm md:text-base">
@@ -256,7 +256,7 @@ export default async function HomePage() {
               </p>
             </ScrollReveal>
             
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-3 gap-6 md:gap-8">
               {typedTestimonials.map((testimonial, index) => (
                 <ScrollReveal key={testimonial.id} delay={index * 0.15}>
                   <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md hover:shadow-xl transition-shadow">
@@ -296,7 +296,7 @@ export default async function HomePage() {
       <section className="py-20 bg-white dark:bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal>
-            <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
               How It Works
             </h2>
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
@@ -304,7 +304,7 @@ export default async function HomePage() {
             </p>
           </ScrollReveal>
           
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
             {[
               {
                 step: "01",
@@ -333,7 +333,7 @@ export default async function HomePage() {
             ].map((item, index) => (
               <ScrollReveal key={index} delay={index * 0.15}>
                 <div className="text-center">
-                  <div className="text-5xl mb-4">{item.icon}</div>
+                  <div className="text-4xl md:text-5xl mb-4">{item.icon}</div>
                   <div className="text-sm font-semibold text-primary-600 dark:text-primary-400 mb-2">
                     STEP {item.step}
                   </div>
@@ -354,7 +354,7 @@ export default async function HomePage() {
       <section className="py-20 bg-gray-50 dark:bg-gray-800">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal>
-            <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+            <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
               Frequently Asked Questions
             </h2>
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12">
@@ -389,7 +389,7 @@ export default async function HomePage() {
                 <details className="bg-white dark:bg-gray-900 rounded-lg p-6 shadow-md hover:shadow-lg transition-shadow">
                   <summary className="font-semibold text-gray-900 dark:text-white cursor-pointer flex items-center justify-between">
                     <span>{faq.question}</span>
-                    <ChevronDown className="w-5 h-5 text-primary-600 dark:text-primary-400 transition-transform duration-200" />
+                    <ChevronDown className="w-5 h-5 shrink-0 text-primary-600 dark:text-primary-400 transition-transform duration-200" />
                   </summary>
                   <p className="mt-4 text-gray-600 dark:text-gray-400">
                     {faq.answer}
@@ -406,7 +406,7 @@ export default async function HomePage() {
         <section className="py-20 bg-white dark:bg-gray-900">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <ScrollReveal>
-              <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
                 Latest from Our Blog
               </h2>
               <p className="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
@@ -414,7 +414,7 @@ export default async function HomePage() {
               </p>
             </ScrollReveal>
             
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-3 gap-6 md:gap-8">
               {typedBlogPosts.map((post, index) => (
                 <ScrollReveal key={post.id} delay={index * 0.15}>
                   <Link href={`/blog/${post.slug}`}>
@@ -467,10 +467,10 @@ export default async function HomePage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <ScrollReveal>
             <Mail className="w-16 h-16 mx-auto mb-6 text-primary-200" />
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               Stay Connected
             </h2>
-            <p className="text-xl mb-8 text-primary-100">
+            <p className="text-lg sm:text-xl mb-8 text-primary-100">
               Subscribe to our newsletter for health tips, treatment updates, and wellness insights.
             </p>
             <NewsletterSignup />
@@ -482,10 +482,10 @@ export default async function HomePage() {
       <section className="py-20 bg-white dark:bg-gray-900">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <ScrollReveal>
-            <h2 className="text-4xl font-bold mb-6 text-gray-900 dark:text-white">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-6 text-gray-900 dark:text-white">
               Ready to Begin Your Healing Journey?
             </h2>
-            <p className="text-xl mb-8 text-gray-600 dark:text-gray-400">
+            <p className="text-lg sm:text-xl mb-8 text-gray-600 dark:text-gray-400">
               Book your consultation today and take the first step towards natural wellness.
             </p>
             <Link href="/appointments">

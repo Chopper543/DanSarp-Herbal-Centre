@@ -127,7 +127,7 @@ export default function DashboardPage() {
         {/* Welcome Section */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
               Welcome back, {userName.split(" ")[0]}!
             </h1>
             {isUserSuperAdmin && (

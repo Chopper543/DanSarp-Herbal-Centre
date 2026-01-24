@@ -128,11 +128,11 @@ export default function AppointmentsPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 text-gray-900 dark:text-white">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-8 text-gray-900 dark:text-white">
           Book Appointment
         </h1>
 
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 lg:p-8 space-y-6">
           <div>
             <label className="block text-sm font-medium mb-4 text-gray-700 dark:text-gray-300">
               Select Date
@@ -148,7 +148,7 @@ export default function AppointmentsPage() {
             <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
               Select Time
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {timeSlots.map((time) => (
                 <button
                   key={time}
