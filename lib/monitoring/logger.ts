@@ -4,34 +4,64 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 
 class Logger {
   private isDevelopment = process.env.NODE_ENV === "development";
+  private isProduction = process.env.NODE_ENV === "production";
 
-  private log(level: LogLevel, message: string, ...args: any[]) {
+  /**
+   * Format log entry for production (JSON) or development (readable)
+   */
+  private formatLog(level: LogLevel, message: string, ...args: any[]): string | object {
     const timestamp = new Date().toISOString();
-    const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+    const logEntry = {
+      timestamp,
+      level: level.toUpperCase(),
+      message,
+      ...(args.length > 0 && { data: args }),
+      environment: process.env.NODE_ENV || "development",
+      service: "dansarp-herbal-centre",
+    };
 
-    if (this.isDevelopment) {
-      // In development, use console
-      switch (level) {
-        case "debug":
-          console.debug(prefix, message, ...args);
-          break;
-        case "info":
-          console.info(prefix, message, ...args);
-          break;
-        case "warn":
-          console.warn(prefix, message, ...args);
-          break;
-        case "error":
-          console.error(prefix, message, ...args);
-          break;
-      }
+    if (this.isProduction) {
+      // Return JSON for structured logging in production
+      return JSON.stringify(logEntry);
     }
 
-    // In production, send to Sentry for errors and warnings
-    if (!this.isDevelopment) {
+    // Return readable format for development
+    return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+  }
+
+  private log(level: LogLevel, message: string, ...args: any[]) {
+    const formatted = this.formatLog(level, message, ...args);
+
+    if (this.isDevelopment) {
+      // In development, use console with readable format
+      switch (level) {
+        case "debug":
+          console.debug(formatted, ...args);
+          break;
+        case "info":
+          console.info(formatted, ...args);
+          break;
+        case "warn":
+          console.warn(formatted, ...args);
+          break;
+        case "error":
+          console.error(formatted, ...args);
+          break;
+      }
+    } else {
+      // In production, use structured logging (already JSON stringified)
+      console.log(formatted);
+    }
+
+    // Send to Sentry for errors and warnings in production
+    if (this.isProduction) {
       if (level === "error") {
         const error = args[0] instanceof Error ? args[0] : new Error(message);
-        captureException(error, { message, args: args.length > 0 ? args : undefined });
+        const context = {
+          message,
+          ...(args.length > 0 && { additionalData: args }),
+        };
+        captureException(error, context);
       } else if (level === "warn") {
         captureMessage(message, "warning");
       }

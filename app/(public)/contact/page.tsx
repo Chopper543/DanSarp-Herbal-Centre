@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navbar } from "@/components/features/Navbar";
 import { ScrollReveal } from "@/components/animations/ScrollReveal";
+import { GoogleMap } from "@/components/features/GoogleMap";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -11,6 +12,66 @@ export default function ContactPage() {
     message: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  
+  // Default coordinates for Nkawkaw branch (main clinic)
+  const defaultCoordinates = { lat: 6.5500, lng: -0.7667 };
+  const defaultAddress = "Oframase New Road, Nkawkaw";
+  
+  // Initialize with default coordinates, will be updated if branch data is found
+  const [mapCoordinates, setMapCoordinates] = useState<{
+    lat: number;
+    lng: number;
+  }>(defaultCoordinates);
+
+  // Fetch main branch coordinates from database
+  useEffect(() => {
+    async function fetchMainBranch() {
+      try {
+        const response = await fetch("/api/branches");
+        if (response.ok) {
+          const data = await response.json();
+          const branches = data.branches || [];
+          
+          // Find Nkawkaw branch (main clinic) or use first active branch
+          const mainBranch = branches.find(
+            (b: any) => b.name?.toLowerCase().includes("nkawkaw")
+          ) || branches[0];
+
+          if (mainBranch?.coordinates) {
+            let coords: { lat: number; lng: number } | null = null;
+            
+            // Handle different coordinate formats
+            if (typeof mainBranch.coordinates === 'object') {
+              if ('x' in mainBranch.coordinates && 'y' in mainBranch.coordinates) {
+                // PostgreSQL POINT format: {x: lng, y: lat}
+                coords = {
+                  lat: mainBranch.coordinates.y,
+                  lng: mainBranch.coordinates.x,
+                };
+              } else if ('lat' in mainBranch.coordinates && 'lng' in mainBranch.coordinates) {
+                coords = mainBranch.coordinates;
+              }
+            }
+
+            if (coords) {
+              setMapCoordinates(coords);
+            } else {
+              setMapCoordinates(defaultCoordinates);
+            }
+          } else {
+            setMapCoordinates(defaultCoordinates);
+          }
+        } else {
+          setMapCoordinates(defaultCoordinates);
+        }
+      } catch (error) {
+        console.error("Failed to fetch branch coordinates:", error);
+        setMapCoordinates(defaultCoordinates);
+      }
+    }
+
+    fetchMainBranch();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +176,25 @@ export default function ContactPage() {
               </form>
             </ScrollReveal>
           </div>
+
+          {/* Google Maps Section */}
+          <ScrollReveal delay={0.4}>
+            <div className="mt-12">
+              <h2 className="text-2xl font-semibold mb-6 text-center text-gray-900 dark:text-white">
+                Find Us
+              </h2>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden">
+                <GoogleMap
+                  latitude={mapCoordinates.lat}
+                  longitude={mapCoordinates.lng}
+                  address={defaultAddress}
+                  height="450px"
+                  zoom={16}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </ScrollReveal>
         </div>
       </div>
     </div>
