@@ -23,21 +23,36 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ testimonials: [data], testimonial: data }, { status: 200 });
     } else {
+      const page = parseInt(searchParams.get("page") || "1");
+      const limit = parseInt(searchParams.get("limit") || "10");
+      const offset = (page - 1) * limit;
+
       // @ts-ignore - Supabase type inference issue
-      let query = supabase.from("testimonials").select("*");
+      let query = supabase.from("testimonials").select("*", { count: "exact" });
 
       if (approvedOnly) {
         query = query.eq("is_approved", true);
       }
 
       // @ts-ignore - Supabase type inference issue
-      const { data, error } = await query.order("created_at", { ascending: false });
+      const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      return NextResponse.json({ testimonials: data || [], testimonial: null }, { status: 200 });
+      return NextResponse.json({
+        testimonials: data || [],
+        testimonial: null,
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit),
+        },
+      }, { status: 200 });
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

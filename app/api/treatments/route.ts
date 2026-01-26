@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { addCacheHeaders, cacheStrategies } from "@/lib/utils/cache-headers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,7 +51,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      return NextResponse.json({ treatments: data || [], treatment: null }, { status: 200 });
+      const response = NextResponse.json({ treatments: data || [], treatment: null }, { status: 200 });
+      return addCacheHeaders(response, cacheStrategies.mediumCache);
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

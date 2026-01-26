@@ -5,6 +5,44 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, Calendar, User } from "lucide-react";
+import { sanitizeBlogContent } from "@/lib/utils/sanitize";
+import { generateMetadata as generateSeoMetadata } from "@/lib/seo/metadata";
+import { generateArticleStructuredData } from "@/lib/seo/structured-data";
+import type { Metadata } from "next";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  // @ts-ignore - Supabase type inference issue
+  const { data: post } = await supabase
+    .from("blog_posts")
+    .select("*")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .single();
+
+  if (!post) {
+    return {};
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://dansarpherbal.com";
+  const imageUrl = (post as any).featured_image_url || `${siteUrl}/og-image.jpg`;
+
+  return generateSeoMetadata({
+    title: `${(post as any).title} | DanSarp Herbal Centre`,
+    description: (post as any).excerpt || (post as any).title,
+    image: imageUrl,
+    url: `${siteUrl}/blog/${slug}`,
+    type: "article",
+    publishedTime: (post as any).published_at,
+    modifiedTime: (post as any).updated_at,
+  });
+}
 
 export default async function BlogPostPage({
   params,
@@ -87,8 +125,30 @@ export default async function BlogPostPage({
       .join("");
   };
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://dansarpherbal.com";
+  const structuredData = generateArticleStructuredData({
+    headline: typedPost.title,
+    description: typedPost.excerpt,
+    image: typedPost.featured_image_url || undefined,
+    datePublished: typedPost.published_at || typedPost.created_at,
+    dateModified: typedPost.updated_at,
+    author: {
+      name: typedPost.author?.full_name || typedPost.author?.email || "DanSarp Herbal Centre",
+    },
+    publisher: {
+      name: "DanSarp Herbal Centre",
+      logo: `${siteUrl}/logo.png`,
+    },
+  });
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData),
+        }}
+      />
       <Navbar />
 
       <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
@@ -151,7 +211,7 @@ export default async function BlogPostPage({
             <div
               className="blog-content text-gray-700 dark:text-gray-300 leading-relaxed"
               dangerouslySetInnerHTML={{
-                __html: convertContentToHTML(typedPost.content),
+                __html: sanitizeBlogContent(convertContentToHTML(typedPost.content)),
               }}
             />
           </article>

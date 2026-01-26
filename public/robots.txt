@@ -1,0 +1,13 @@
+# robots.txt for DanSarp Herbal Centre
+# This file is a fallback. The dynamic version is generated at /robots
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /auth/
+Disallow: /_next/
+Disallow: /private/
+
+Sitemap: https://dansarpherbal.com/sitemap.xml

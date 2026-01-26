@@ -22,31 +22,39 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.json({ items: [data], item: data }, { status: 200 });
-    } else if (type) {
-      // @ts-ignore - Supabase type inference issue
-      const { data, error } = await supabase
-        .from("gallery_items")
-        .select("*")
-        .eq("type", type)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-
-      return NextResponse.json({ items: data || [], item: null }, { status: 200 });
     } else {
+      const page = parseInt(searchParams.get("page") || "1");
+      const limit = parseInt(searchParams.get("limit") || "12");
+      const offset = (page - 1) * limit;
+
       // @ts-ignore - Supabase type inference issue
-      const { data, error } = await supabase
+      let query = supabase
         .from("gallery_items")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select("*", { count: "exact" });
+
+      if (type) {
+        query = query.eq("type", type);
+      }
+
+      // @ts-ignore - Supabase type inference issue
+      const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      return NextResponse.json({ items: data || [], item: null }, { status: 200 });
+      return NextResponse.json({
+        items: data || [],
+        item: null,
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit),
+        },
+      }, { status: 200 });
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

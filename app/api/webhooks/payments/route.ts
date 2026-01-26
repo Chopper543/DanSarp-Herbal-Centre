@@ -147,6 +147,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Verify Flutterwave webhook signature
+    if (provider === "flutterwave") {
+      const secretHash = process.env.FLUTTERWAVE_SECRET_HASH;
+      if (secretHash) {
+        const signature = request.headers.get("verif-hash");
+        if (!signature) {
+          return NextResponse.json({ error: "Missing signature" }, { status: 401 });
+        }
+
+        // Flutterwave uses SHA512 hash of raw body with secret hash
+        const hash = crypto
+          .createHmac("sha512", secretHash)
+          .update(rawBody)
+          .digest("hex");
+
+        if (hash !== signature) {
+          return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+        }
+      }
+    }
+
     if (provider === "flutterwave" && body.event === "charge.completed") {
       const transactionId = body.data.id.toString();
       

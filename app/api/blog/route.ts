@@ -38,10 +38,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ posts: [data], post: data }, { status: 200 });
     } else {
       // For list, filter by status unless include_drafts is true
+      const page = parseInt(searchParams.get("page") || "1");
+      const limit = parseInt(searchParams.get("limit") || "10");
+      const offset = (page - 1) * limit;
+
       // @ts-ignore - Supabase type inference issue with blog_posts table
       let query = supabase
         .from("blog_posts")
-        .select("*, author:users!blog_posts_author_id_fkey(id, full_name, email)");
+        .select("*, author:users!blog_posts_author_id_fkey(id, full_name, email)", { count: "exact" });
 
       if (!includeDrafts) {
         query = query.eq("status", "published");
@@ -50,13 +54,24 @@ export async function GET(request: NextRequest) {
       }
 
       // @ts-ignore - Supabase type inference issue
-      const { data, error } = await query.order("created_at", { ascending: false });
+      const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      return NextResponse.json({ posts: data || [], post: null }, { status: 200 });
+      return NextResponse.json({
+        posts: data || [],
+        post: null,
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit),
+        },
+      }, { status: 200 });
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
