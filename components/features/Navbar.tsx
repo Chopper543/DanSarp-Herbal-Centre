@@ -67,7 +67,7 @@ export function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors font-medium"
+                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 py-1"
               >
                 {link.label}
               </Link>
@@ -75,7 +75,7 @@ export function Navbar() {
             <ThemeToggle />
             <Link
               href="/appointments"
-              className="bg-primary-600 hover:bg-primary-950 text-white px-4 py-2 rounded-lg transition-colors font-semibold whitespace-nowrap"
+              className="bg-primary-600 hover:bg-primary-950 text-white px-4 py-2 rounded-lg transition-colors font-semibold whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 min-h-[40px] flex items-center"
             >
               Book Appointment
             </Link>
@@ -86,7 +86,7 @@ export function Navbar() {
                 ) : (
                   <Link
                     href="/login"
-                    className="bg-primary-600 hover:bg-primary-950 text-white px-4 py-2 rounded-lg transition-colors font-semibold"
+                    className="bg-primary-600 hover:bg-primary-950 text-white px-4 py-2 rounded-lg transition-colors font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 min-h-[40px] flex items-center"
                   >
                     Login
                   </Link>
@@ -100,7 +100,10 @@ export function Navbar() {
             <ThemeToggle />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+              type="button"
             >
               {mobileMenuOpen ? (
                 <X className="w-6 h-6" />
@@ -113,13 +116,14 @@ export function Navbar() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 space-y-2 max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="md:hidden py-4 space-y-2 max-h-[calc(100vh-4rem)] overflow-y-auto" role="menu" aria-label="Mobile navigation">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="block px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors min-h-[44px] flex items-center"
+                role="menuitem"
               >
                 {link.label}
               </Link>
@@ -127,7 +131,8 @@ export function Navbar() {
             <Link
               href="/appointments"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-4 py-2 bg-primary-600 text-white rounded-lg text-center font-semibold"
+              className="block px-4 py-3 bg-primary-600 text-white rounded-lg text-center font-semibold min-h-[44px] flex items-center justify-center transition-colors hover:bg-primary-700"
+              role="menuitem"
             >
               Book Appointment
             </Link>
@@ -138,7 +143,8 @@ export function Navbar() {
                     <Link
                       href="/dashboard"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="block px-4 py-2 bg-primary-600 text-white rounded-lg text-center font-semibold"
+                      className="block px-4 py-3 bg-primary-600 text-white rounded-lg text-center font-semibold min-h-[44px] flex items-center justify-center transition-colors hover:bg-primary-700"
+                      role="menuitem"
                     >
                       Dashboard
                     </Link>
@@ -150,7 +156,9 @@ export function Navbar() {
                         router.push("/");
                         router.refresh();
                       }}
-                      className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors font-semibold flex items-center justify-center gap-2"
+                      className="w-full px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors font-semibold flex items-center justify-center gap-2 min-h-[44px]"
+                      type="button"
+                      aria-label="Logout"
                     >
                       <LogOut className="w-4 h-4" />
                       Logout
@@ -160,7 +168,8 @@ export function Navbar() {
                   <Link
                     href="/login"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-2 bg-primary-600 text-white rounded-lg text-center font-semibold"
+                    className="block px-4 py-3 bg-primary-600 text-white rounded-lg text-center font-semibold min-h-[44px] flex items-center justify-center transition-colors hover:bg-primary-700"
+                    role="menuitem"
                   >
                     Login
                   </Link>

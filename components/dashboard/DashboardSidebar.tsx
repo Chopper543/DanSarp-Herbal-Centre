@@ -83,7 +83,10 @@ export function DashboardSidebar() {
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md"
+          className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+          aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={isMobileMenuOpen}
+          type="button"
         >
           {isMobileMenuOpen ? (
             <X className="w-6 h-6" />
@@ -135,9 +138,11 @@ export function DashboardSidebar() {
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 w-full transition-colors"
+              className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 w-full transition-colors min-h-[44px] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              type="button"
+              aria-label="Logout"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-5 h-5 shrink-0" />
               <span className="font-medium">Logout</span>
             </button>
           </div>

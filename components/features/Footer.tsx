@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { MapPin, Phone, Mail } from "lucide-react";
+import { SocialLinks } from "./SocialLinks";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -31,6 +32,16 @@ export function Footer() {
                 <span className="break-words">info@dansarpherbal.com</span>
               </div>
             </div>
+            
+            {/* Social Media Links */}
+            <div className="mt-6">
+              <h4 className="text-white font-semibold mb-3 text-sm">Follow Us</h4>
+              <SocialLinks 
+                size="md" 
+                variant="default"
+                className="flex-wrap"
+              />
+            </div>
           </div>
 
           {/* Quick Links */}
@@ -38,22 +49,22 @@ export function Footer() {
             <h4 className="text-white font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-sm">
               <li>
-                <Link href="/" className="hover:text-primary-400 transition-colors">
+                <Link href="/" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Home
                 </Link>
               </li>
               <li>
-                <Link href="/about" className="hover:text-primary-400 transition-colors">
+                <Link href="/about" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   About Us
                 </Link>
               </li>
               <li>
-                <Link href="/treatments" className="hover:text-primary-400 transition-colors">
+                <Link href="/treatments" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Treatments
                 </Link>
               </li>
               <li>
-                <Link href="/contact" className="hover:text-primary-400 transition-colors">
+                <Link href="/contact" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Contact
                 </Link>
               </li>
@@ -65,22 +76,22 @@ export function Footer() {
             <h4 className="text-white font-semibold mb-4">Services</h4>
             <ul className="space-y-2 text-sm">
               <li>
-                <Link href="/treatments" className="hover:text-primary-400 transition-colors">
+                <Link href="/treatments" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   All Treatments
                 </Link>
               </li>
               <li>
-                <Link href="/appointments" className="hover:text-primary-400 transition-colors">
+                <Link href="/appointments" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Book Appointment
                 </Link>
               </li>
               <li>
-                <Link href="/gallery" className="hover:text-primary-400 transition-colors">
+                <Link href="/gallery" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Gallery
                 </Link>
               </li>
               <li>
-                <Link href="/testimonials" className="hover:text-primary-400 transition-colors">
+                <Link href="/testimonials" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Testimonials
                 </Link>
               </li>

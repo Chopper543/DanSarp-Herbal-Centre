@@ -70,21 +70,23 @@ export function HeroSection() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
-              <Link href="/appointments">
+              <Link href="/appointments" className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="group relative overflow-hidden bg-primary-600 hover:bg-primary-950 text-white px-8 py-4 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  className="group relative overflow-hidden bg-primary-600 hover:bg-primary-950 text-white px-8 py-4 text-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 w-full sm:w-auto min-h-[48px]"
+                  aria-label="Book an appointment"
                 >
                   <span className="relative z-10 font-semibold">Book Appointment</span>
                   <span className="absolute inset-0 bg-primary-950 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300" />
                 </Button>
               </Link>
               
-              <Link href="/treatments">
+              <Link href="/treatments" className="w-full sm:w-auto">
                 <Button
                   variant="outline"
                   size="lg"
-                  className="border-2 border-white text-white hover:bg-white hover:text-primary-600 px-8 py-4 text-lg backdrop-blur-sm"
+                  className="border-2 border-white text-white hover:bg-white hover:text-primary-600 px-8 py-4 text-lg backdrop-blur-sm w-full sm:w-auto min-h-[48px]"
+                  aria-label="View our treatments"
                 >
                   Start Your Healing Journey
                 </Button>

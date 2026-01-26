@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Navbar } from "@/components/features/Navbar";
 import { ScrollReveal } from "@/components/animations/ScrollReveal";
 import { GoogleMap } from "@/components/features/GoogleMap";
+import { SocialLinks } from "@/components/features/SocialLinks";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -123,6 +124,14 @@ export default function ContactPage() {
                     <p className="break-words text-gray-600 dark:text-gray-400">
                       info@dansarpherbal.com
                     </p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Follow Us</h3>
+                    <SocialLinks 
+                      size="md" 
+                      variant="minimal"
+                      className="flex-wrap"
+                    />
                   </div>
                 </div>
               </div>
