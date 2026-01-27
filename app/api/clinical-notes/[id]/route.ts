@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 
 export async function GET(
   request: NextRequest,
@@ -18,6 +18,12 @@ export async function GET(
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
+    const isStaff = Boolean(
+      isUserAdmin ||
+        userRole === "appointment_manager" ||
+        isDoctor(userRole) ||
+        isNurse(userRole)
+    );
 
     // @ts-ignore
     const { data: note, error } = await supabase
@@ -30,8 +36,8 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Check permissions
-    if (!isUserAdmin && note.patient_id !== user.id && note.doctor_id !== user.id) {
+    // Check permissions (patients see own; staff can see all)
+    if (!isStaff && note.patient_id !== user.id && note.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -57,6 +63,9 @@ export async function PUT(
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
+    const canUpdate = Boolean(
+      isUserAdmin || userRole === "appointment_manager" || isDoctor(userRole)
+    ); // nurse cannot update clinical notes
 
     // Check if note exists and user has permission
     // @ts-ignore
@@ -70,8 +79,8 @@ export async function PUT(
       return NextResponse.json({ error: "Clinical note not found" }, { status: 404 });
     }
 
-    // Check permissions
-    if (!isUserAdmin && existingNote.doctor_id !== user.id) {
+    // Check permissions (doctor/admin/appointment_manager can update; otherwise only assigned doctor)
+    if (!canUpdate && existingNote.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

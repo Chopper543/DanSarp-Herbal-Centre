@@ -25,6 +25,23 @@ export function hasRole(userRole: UserRole | null, requiredRoles: UserRole[]): b
   return requiredRoles.includes(userRole);
 }
 
+export function isDoctor(userRole: UserRole | null): boolean {
+  return userRole === "doctor";
+}
+
+export function isNurse(userRole: UserRole | null): boolean {
+  return userRole === "nurse";
+}
+
+export function isClinicalStaff(userRole: UserRole | null): boolean {
+  return (
+    isAdmin(userRole) ||
+    isDoctor(userRole) ||
+    isNurse(userRole) ||
+    userRole === "appointment_manager"
+  );
+}
+
 export function isAdmin(userRole: UserRole | null): boolean {
   return hasRole(userRole, [
     "super_admin",

@@ -14,11 +14,14 @@ import {
   Menu,
   X,
   Shield,
+  FileText,
+  ClipboardList,
+  TestTube,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { getUserRole, isAdmin, isUserOnly } from "@/lib/auth/rbac-client";
+import { getUserRole, isClinicalStaff, isUserOnly } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 
 interface NavItem {
@@ -33,6 +36,10 @@ const navItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/appointments", label: "Appointments", icon: Calendar, userOnly: true },
+  { href: "/prescriptions", label: "Prescriptions", icon: ClipboardList, userOnly: true },
+  { href: "/lab-results", label: "Lab Results", icon: TestTube, userOnly: true },
+  { href: "/clinical-notes", label: "Clinical Notes", icon: FileText, userOnly: true },
+  { href: "/intake-forms", label: "Intake Forms", icon: ClipboardList, userOnly: true },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/payments", label: "Payments", icon: CreditCard, userOnly: true },
@@ -67,7 +74,7 @@ export function DashboardSidebar() {
   const filteredNavItems = navItems.filter((item) => {
     // Show admin-only items only to admins
     if (item.adminOnly) {
-      return userRole && isAdmin(userRole);
+      return userRole && isClinicalStaff(userRole);
     }
     // Hide user-only items from staff
     if (item.userOnly) {

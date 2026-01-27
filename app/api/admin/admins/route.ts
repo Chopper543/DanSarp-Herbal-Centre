@@ -56,6 +56,8 @@ export async function POST(request: NextRequest) {
       "content_manager",
       "appointment_manager",
       "finance_manager",
+      "doctor",
+      "nurse",
       "user",
     ];
     if (!validRoles.includes(newRole)) {

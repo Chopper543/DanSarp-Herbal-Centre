@@ -4,6 +4,8 @@ export type UserRole =
   | "content_manager"
   | "appointment_manager"
   | "finance_manager"
+  | "doctor"
+  | "nurse"
   | "user";
 
 export interface User {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 import { LabResult, TestResult } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -125,8 +125,14 @@ export async function POST(request: NextRequest) {
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
 
-    // Only doctors and admins can create lab results
-    if (!isUserAdmin && userRole !== "appointment_manager") {
+    // Clinical staff can create lab results (doctor + nurse + appointment_manager + admin)
+    const canCreate = Boolean(
+      isUserAdmin ||
+        userRole === "appointment_manager" ||
+        isDoctor(userRole) ||
+        isNurse(userRole)
+    );
+    if (!canCreate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 
 export async function GET(
   request: NextRequest,
@@ -18,6 +18,12 @@ export async function GET(
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
+    const isStaff = Boolean(
+      isUserAdmin ||
+        userRole === "appointment_manager" ||
+        isDoctor(userRole) ||
+        isNurse(userRole)
+    );
 
     // @ts-ignore
     const { data: labResult, error } = await supabase
@@ -30,8 +36,8 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Check permissions
-    if (!isUserAdmin && labResult.patient_id !== user.id && labResult.doctor_id !== user.id) {
+    // Check permissions (patients see own; staff can see all)
+    if (!isStaff && labResult.patient_id !== user.id && labResult.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -57,6 +63,12 @@ export async function PUT(
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
+    const canUpdate = Boolean(
+      isUserAdmin ||
+        userRole === "appointment_manager" ||
+        isDoctor(userRole) ||
+        isNurse(userRole)
+    );
 
     // Check if lab result exists and user has permission
     // @ts-ignore
@@ -70,8 +82,8 @@ export async function PUT(
       return NextResponse.json({ error: "Lab result not found" }, { status: 404 });
     }
 
-    // Check permissions
-    if (!isUserAdmin && existingLabResult.doctor_id !== user.id) {
+    // Check permissions (clinical staff can update; otherwise only assigned doctor)
+    if (!canUpdate && existingLabResult.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

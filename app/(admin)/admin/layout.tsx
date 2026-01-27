@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getUserRole, isAdmin, isSuperAdmin } from "@/lib/auth/rbac-client";
+import { getUserRole, isClinicalStaff, isSuperAdmin } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 import { ChevronDown, Menu, X } from "lucide-react";
 
@@ -33,7 +33,7 @@ export default function AdminLayout({
       }
 
       const role = await getUserRole();
-      if (!isAdmin(role)) {
+      if (!isClinicalStaff(role)) {
         router.push("/dashboard");
         return;
       }
@@ -61,6 +61,10 @@ export default function AdminLayout({
   const mainNavItems = [
     { href: "/admin", label: "Dashboard" },
     { href: "/admin/appointments", label: "Appointments" },
+    { href: "/admin/prescriptions", label: "Prescriptions" },
+    { href: "/admin/lab-results", label: "Lab Results" },
+    { href: "/admin/clinical-notes", label: "Clinical Notes" },
+    { href: "/admin/intake-forms", label: "Intake Forms" },
     { href: "/admin/content", label: "Content" },
     { href: "/admin/payments", label: "Payments" },
     { href: "/admin/users", label: "Users" },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
 import { TreatmentPlan } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -97,7 +97,11 @@ export async function POST(request: NextRequest) {
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
 
-    if (!isUserAdmin && userRole !== "appointment_manager") {
+    // Treatment plans can be created by doctor + appointment_manager + admin (nurse cannot)
+    const canCreate = Boolean(
+      isUserAdmin || userRole === "appointment_manager" || isDoctor(userRole)
+    );
+    if (!canCreate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

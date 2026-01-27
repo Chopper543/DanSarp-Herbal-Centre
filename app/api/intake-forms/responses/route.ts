@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,6 +23,12 @@ export async function GET(request: NextRequest) {
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
+    const isStaffReviewer = Boolean(
+      isUserAdmin ||
+        userRole === "appointment_manager" ||
+        isDoctor(userRole) ||
+        isNurse(userRole)
+    );
 
     let query = supabase.from("intake_form_responses").select("*", { count: "exact" });
 
@@ -37,7 +43,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Check permissions
-      if (!isUserAdmin && response.patient_id !== user.id) {
+      if (!isStaffReviewer && response.patient_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -51,11 +57,11 @@ export async function GET(request: NextRequest) {
 
     // Filter by patient_id if provided
     if (patientId) {
-      if (!isUserAdmin && patientId !== user.id) {
+      if (!isStaffReviewer && patientId !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       query = query.eq("patient_id", patientId);
-    } else if (!isUserAdmin) {
+    } else if (!isStaffReviewer) {
       // Regular users can only see their own responses
       query = query.eq("patient_id", user.id);
     }
@@ -107,6 +113,12 @@ export async function PUT(request: NextRequest) {
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
+    const isStaffReviewer = Boolean(
+      isUserAdmin ||
+        userRole === "appointment_manager" ||
+        isDoctor(userRole) ||
+        isNurse(userRole)
+    );
 
     const body = await request.json();
     const { id, status, review_notes } = body;
@@ -128,12 +140,12 @@ export async function PUT(request: NextRequest) {
     }
 
     // Patients can only update their own draft responses
-    if (!isUserAdmin && existingResponse.patient_id !== user.id) {
+    if (!isStaffReviewer && existingResponse.patient_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Patients can only update draft responses
-    if (!isUserAdmin && existingResponse.status !== "draft") {
+    if (!isStaffReviewer && existingResponse.status !== "draft") {
       return NextResponse.json(
         { error: "Only draft responses can be updated" },
         { status: 403 }
@@ -152,8 +164,11 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Admins can review responses
-    if (isUserAdmin && (status === "reviewed" || status === "approved" || status === "rejected")) {
+    // Clinical staff can review responses
+    if (
+      isStaffReviewer &&
+      (status === "reviewed" || status === "approved" || status === "rejected")
+    ) {
       updatePayload.reviewed_by = user.id;
       updatePayload.reviewed_at = new Date().toISOString();
       if (review_notes) {
