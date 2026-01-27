@@ -258,3 +258,243 @@ export interface PatientRecord {
   created_by?: string;
   updated_by?: string;
 }
+
+export type PrescriptionStatus = "draft" | "active" | "completed" | "cancelled" | "expired";
+
+export interface HerbFormula {
+  name: string;
+  quantity: number;
+  unit: string; // e.g., "grams", "ml", "tablets"
+  dosage: string; // e.g., "2 tablets twice daily"
+  instructions?: string;
+}
+
+export interface Prescription {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  appointment_id: string | null;
+  herbs_formulas: HerbFormula[];
+  instructions: string | null;
+  duration_days: number | null;
+  refills_remaining: number;
+  refills_original: number;
+  prescribed_date: string;
+  expiry_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: PrescriptionStatus;
+  doctor_notes: string | null;
+  patient_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export type RefillStatus = "pending" | "approved" | "rejected" | "fulfilled";
+
+export interface PrescriptionRefill {
+  id: string;
+  prescription_id: string;
+  patient_id: string;
+  requested_date: string;
+  requested_refills: number;
+  status: RefillStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TreatmentPlanStatus = "draft" | "active" | "completed" | "cancelled" | "on_hold";
+
+export interface TreatmentPlanProgressNote {
+  date: string;
+  note: string;
+  progress_percentage: number;
+}
+
+export interface TreatmentPlan {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  appointment_id: string | null;
+  title: string;
+  description: string | null;
+  diagnosis: string | null;
+  goals: string[];
+  treatment_approach: string | null;
+  start_date: string;
+  end_date: string | null;
+  estimated_duration_days: number | null;
+  status: TreatmentPlanStatus;
+  progress_notes: TreatmentPlanProgressNote[];
+  current_progress: number;
+  follow_up_required: boolean;
+  follow_up_interval_days: number | null;
+  next_follow_up_date: string | null;
+  template_id: string | null;
+  doctor_notes: string | null;
+  patient_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export type FollowUpStatus = "scheduled" | "completed" | "cancelled" | "missed";
+
+export interface TreatmentPlanFollowUp {
+  id: string;
+  treatment_plan_id: string;
+  appointment_id: string | null;
+  scheduled_date: string;
+  follow_up_type: string | null;
+  status: FollowUpStatus;
+  notes: string | null;
+  outcome: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// LAB RESULTS TYPES
+// ============================================================================
+
+export type LabResultStatus = "pending" | "in_progress" | "completed" | "cancelled" | "reviewed";
+
+export interface TestResult {
+  [key: string]: string | number | null; // Key-value pairs for test results
+}
+
+export interface LabResult {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  appointment_id: string | null;
+  test_name: string;
+  test_type: string | null;
+  ordered_date: string;
+  completed_date: string | null;
+  results: TestResult;
+  normal_range: string | null;
+  units: string | null;
+  file_urls: string[];
+  status: LabResultStatus;
+  notes: string | null;
+  doctor_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+// ============================================================================
+// CLINICAL NOTES TYPES (SOAP Notes)
+// ============================================================================
+
+export type NoteType = "soap" | "progress" | "general";
+
+export interface VitalSigns {
+  blood_pressure?: string; // e.g., "120/80"
+  pulse?: number;
+  temperature?: number;
+  temperature_unit?: "celsius" | "fahrenheit";
+  weight?: number;
+  weight_unit?: "kg" | "lbs";
+  height?: number;
+  height_unit?: "cm" | "ft";
+  respiratory_rate?: number;
+  oxygen_saturation?: number;
+  [key: string]: any; // Allow additional vital signs
+}
+
+export interface ClinicalNote {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  appointment_id: string | null;
+  note_type: NoteType;
+  subjective: string | null;
+  objective: string | null;
+  assessment: string | null;
+  plan: string | null;
+  vital_signs: VitalSigns;
+  diagnosis_codes: string[];
+  template_id: string | null;
+  is_template: boolean;
+  attachments: string[];
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+// ============================================================================
+// INTAKE FORMS TYPES
+// ============================================================================
+
+export type FormFieldType = "text" | "textarea" | "select" | "checkbox" | "radio" | "date" | "file" | "number" | "email" | "tel";
+
+export interface FormField {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  name: string;
+  placeholder?: string;
+  required?: boolean;
+  options?: string[]; // For select, radio, checkbox
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    message?: string;
+  };
+  conditional?: {
+    field: string;
+    value: any;
+    operator?: "equals" | "not_equals" | "contains";
+  };
+  help_text?: string;
+}
+
+export interface FormSchema {
+  fields: FormField[];
+  sections?: Array<{
+    title: string;
+    fields: string[]; // Field IDs
+  }>;
+  submit_button_text?: string;
+  success_message?: string;
+}
+
+export interface IntakeForm {
+  id: string;
+  name: string;
+  description: string | null;
+  form_schema: FormSchema;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export type IntakeFormResponseStatus = "draft" | "submitted" | "reviewed" | "approved" | "rejected";
+
+export interface IntakeFormResponse {
+  id: string;
+  form_id: string;
+  patient_id: string;
+  appointment_id: string | null;
+  response_data: Record<string, any>; // Dynamic response data matching form schema
+  status: IntakeFormResponseStatus;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
