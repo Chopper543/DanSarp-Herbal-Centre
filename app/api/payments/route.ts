@@ -5,6 +5,7 @@ import { PaystackProvider } from "@/lib/payments/providers/paystack";
 import { FlutterwaveProvider } from "@/lib/payments/providers/flutterwave";
 import { GhanaRailsProvider } from "@/lib/payments/providers/ghana-rails";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
+import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
 
 // Register payment providers
 paymentService.registerProvider("paystack", new PaystackProvider());
@@ -124,6 +125,21 @@ export async function POST(request: NextRequest) {
       card_name,
       card_pin
     } = body;
+
+    // If this payment is for appointment booking (booking fee), enforce prerequisites BEFORE charging.
+    if (appointment_data) {
+      const prereq = await evaluateBookingPrerequisites();
+      if (!prereq.canProceed) {
+        return NextResponse.json(
+          {
+            error:
+              "Payment blocked. Please verify your email, add full name + phone, and submit required intake forms.",
+            prerequisites: prereq,
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // Determine provider based on payment method
     let selectedProvider = provider || "paystack";

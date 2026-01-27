@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || 10;
+    const limit = parseInt(searchParams.get("limit") || "10");
 
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
@@ -32,20 +32,24 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific lab result
     if (labResultId) {
-      query = query.eq("id", labResultId).single();
       // @ts-ignore
-      const { data: labResult, error } = await query;
+      const { data: labResult, error } = await supabase
+        .from("lab_results")
+        .select("*")
+        .eq("id", labResultId)
+        .single();
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
       // Check permissions
-      if (!isUserAdmin && labResult.patient_id !== user.id && labResult.doctor_id !== user.id) {
+      const typedLabResult = labResult as { patient_id: string; doctor_id: string } | null;
+      if (!isUserAdmin && typedLabResult?.patient_id !== user.id && typedLabResult?.doctor_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
-      return NextResponse.json({ labResult }, { status: 200 });
+      return NextResponse.json({ lab_result: labResult }, { status: 200 });
     }
 
     // Filter by patient_id if provided
@@ -96,7 +100,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        labResults: labResults || [],
+        lab_results: labResults || [],
         pagination: {
           page,
           limit,
@@ -183,7 +187,8 @@ export async function POST(request: NextRequest) {
     // @ts-ignore
     const { data: labResult, error } = await supabase
       .from("lab_results")
-      .insert(labResultData)
+      // @ts-ignore - Supabase type inference issue
+      .insert(labResultData as any)
       .select()
       .single();
 
@@ -231,7 +236,8 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check permissions
-    if (!isUserAdmin && existingLabResult.doctor_id !== user.id) {
+    const typedExistingLabResult = existingLabResult as { doctor_id: string } | null;
+    if (!isUserAdmin && typedExistingLabResult?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -245,7 +251,8 @@ export async function PUT(request: NextRequest) {
     // @ts-ignore
     const { data: labResult, error } = await supabase
       .from("lab_results")
-      .update(updatePayload)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
       .eq("id", id)
       .select()
       .single();

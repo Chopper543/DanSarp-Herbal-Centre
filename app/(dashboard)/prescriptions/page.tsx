@@ -238,7 +238,7 @@ export default function PatientPrescriptionsPage() {
                             max={prescription.refills_remaining}
                             value={refillRequested}
                             onChange={(e) => setRefillRequested(parseInt(e.target.value) || 1)}
-                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                           />
                           <button
                             onClick={() => handleRefillRequest(prescription.id)}

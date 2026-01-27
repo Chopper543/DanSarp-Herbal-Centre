@@ -26,6 +26,20 @@ body {
     rgb(var(--background-start-rgb));
 }
 
+@layer base {
+  input,
+  textarea,
+  select {
+    @apply bg-white text-gray-900;
+    @apply dark:bg-gray-700 dark:text-white;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-gray-400 dark:text-gray-500;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

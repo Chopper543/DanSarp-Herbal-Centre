@@ -34,16 +34,20 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific response
     if (responseId) {
-      query = query.eq("id", responseId).single();
       // @ts-ignore
-      const { data: response, error } = await query;
+      const { data: response, error } = await supabase
+        .from("intake_form_responses")
+        .select("*")
+        .eq("id", responseId)
+        .single();
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
       // Check permissions
-      if (!isStaffReviewer && response.patient_id !== user.id) {
+      const typedResponse = response as { patient_id: string } | null;
+      if (!isStaffReviewer && typedResponse?.patient_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -140,12 +144,13 @@ export async function PUT(request: NextRequest) {
     }
 
     // Patients can only update their own draft responses
-    if (!isStaffReviewer && existingResponse.patient_id !== user.id) {
+    const typedExistingResponse = existingResponse as { patient_id: string; status: string } | null;
+    if (!isStaffReviewer && typedExistingResponse?.patient_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Patients can only update draft responses
-    if (!isStaffReviewer && existingResponse.status !== "draft") {
+    if (!isStaffReviewer && typedExistingResponse?.status !== "draft") {
       return NextResponse.json(
         { error: "Only draft responses can be updated" },
         { status: 403 }
@@ -179,7 +184,8 @@ export async function PUT(request: NextRequest) {
     // @ts-ignore
     const { data: response, error } = await supabase
       .from("intake_form_responses")
-      .update(updatePayload)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
       .eq("id", id)
       .select()
       .single();

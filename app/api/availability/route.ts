@@ -132,14 +132,16 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Availability not found" }, { status: 404 });
     }
 
-    if (!isUserAdmin && existing.doctor_id !== user.id) {
+    const existingAvailability = existing as { doctor_id: string } | null;
+    if (!isUserAdmin && existingAvailability?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // @ts-ignore
     const { data: availability, error } = await supabase
       .from("doctor_availability")
-      .update(updateData)
+      // @ts-ignore - Supabase type inference issue
+      .update(updateData as any)
       .eq("id", id)
       .select()
       .single();
@@ -186,7 +188,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Availability not found" }, { status: 404 });
     }
 
-    if (!isUserAdmin && existing.doctor_id !== user.id) {
+    const existingAvailability = existing as { doctor_id: string } | null;
+    if (!isUserAdmin && existingAvailability?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -194,7 +197,8 @@ export async function DELETE(request: NextRequest) {
     // @ts-ignore
     const { error } = await supabase
       .from("doctor_availability")
-      .update({ is_active: false })
+      // @ts-ignore - Supabase type inference issue
+      .update({ is_active: false } as any)
       .eq("id", id);
 
     if (error) {

@@ -4,9 +4,10 @@ import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -29,7 +30,7 @@ export async function GET(
     const { data: note, error } = await supabase
       .from("clinical_notes")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) {
@@ -37,7 +38,8 @@ export async function GET(
     }
 
     // Check permissions (patients see own; staff can see all)
-    if (!isStaff && note.patient_id !== user.id && note.doctor_id !== user.id) {
+    const typedNote = note as { patient_id: string; doctor_id: string } | null;
+    if (!isStaff && typedNote?.patient_id !== user.id && typedNote?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -49,9 +51,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -72,7 +75,7 @@ export async function PUT(
     const { data: existingNote, error: fetchError } = await supabase
       .from("clinical_notes")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (fetchError || !existingNote) {
@@ -80,7 +83,8 @@ export async function PUT(
     }
 
     // Check permissions (doctor/admin/appointment_manager can update; otherwise only assigned doctor)
-    if (!canUpdate && existingNote.doctor_id !== user.id) {
+    const typedExistingNote = existingNote as { doctor_id: string } | null;
+    if (!canUpdate && typedExistingNote?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -94,8 +98,9 @@ export async function PUT(
     // @ts-ignore
     const { data: note, error } = await supabase
       .from("clinical_notes")
-      .update(updatePayload)
-      .eq("id", params.id)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
+      .eq("id", id)
       .select()
       .single();
 
@@ -111,9 +116,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -132,7 +138,7 @@ export async function DELETE(
     }
 
     // @ts-ignore
-    const { error } = await supabase.from("clinical_notes").delete().eq("id", params.id);
+    const { error } = await supabase.from("clinical_notes").delete().eq("id", id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });

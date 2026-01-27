@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendAppointmentConfirmation } from "@/lib/email/resend";
 import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
+import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +27,19 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { branch_id, appointment_date, treatment_type, notes, payment_id } = body;
+
+    // Enforce booking prerequisites (cannot be bypassed)
+    const prereq = await evaluateBookingPrerequisites();
+    if (!prereq.canProceed) {
+      return NextResponse.json(
+        {
+          error:
+            "Booking blocked. Please verify your email, add full name + phone, and submit required intake forms.",
+          prerequisites: prereq,
+        },
+        { status: 403 }
+      );
+    }
 
     // Verify payment is provided and completed
     if (!payment_id) {

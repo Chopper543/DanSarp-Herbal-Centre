@@ -4,9 +4,10 @@ import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -23,7 +24,7 @@ export async function GET(
     const { data: form, error } = await supabase
       .from("intake_forms")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) {
@@ -31,7 +32,8 @@ export async function GET(
     }
 
     // Check permissions - only active forms are visible to non-admins
-    if (!isUserAdmin && !form.is_active) {
+    const typedForm = form as { is_active: boolean } | null;
+    if (!isUserAdmin && !typedForm?.is_active) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -43,9 +45,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -63,7 +66,7 @@ export async function PUT(
     const { data: existingForm, error: fetchError } = await supabase
       .from("intake_forms")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (fetchError || !existingForm) {
@@ -85,8 +88,9 @@ export async function PUT(
     // @ts-ignore
     const { data: form, error } = await supabase
       .from("intake_forms")
-      .update(updatePayload)
-      .eq("id", params.id)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
+      .eq("id", id)
       .select()
       .single();
 
@@ -102,9 +106,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -123,7 +128,7 @@ export async function DELETE(
     }
 
     // @ts-ignore
-    const { error } = await supabase.from("intake_forms").delete().eq("id", params.id);
+    const { error } = await supabase.from("intake_forms").delete().eq("id", id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });

@@ -163,7 +163,7 @@ export function PrescriptionBuilder({
               value={formData.patient_id}
               onChange={(e) => setFormData({ ...formData, patient_id: e.target.value })}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
 
@@ -174,7 +174,7 @@ export function PrescriptionBuilder({
             <select
               value={formData.appointment_id || ""}
               onChange={(e) => setFormData({ ...formData, appointment_id: e.target.value || "" })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             >
               <option value="">Select appointment...</option>
               {appointments.map((apt) => (
@@ -367,7 +367,7 @@ export function PrescriptionBuilder({
             value={formData.instructions}
             onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
             rows={4}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             placeholder="General instructions for taking all medications..."
           />
         </div>
@@ -382,7 +382,7 @@ export function PrescriptionBuilder({
               value={formData.duration_days || ""}
               onChange={(e) => setFormData({ ...formData, duration_days: parseInt(e.target.value) || null })}
               min="1"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
           <div>
@@ -393,7 +393,7 @@ export function PrescriptionBuilder({
               type="date"
               value={formData.start_date}
               onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
           <div>
@@ -404,7 +404,7 @@ export function PrescriptionBuilder({
               type="date"
               value={formData.expiry_date}
               onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
         </div>
@@ -419,7 +419,7 @@ export function PrescriptionBuilder({
               value={formData.refills_original}
               onChange={(e) => setFormData({ ...formData, refills_original: parseInt(e.target.value) || 0 })}
               min="0"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
         </div>
@@ -432,7 +432,7 @@ export function PrescriptionBuilder({
             value={formData.doctor_notes}
             onChange={(e) => setFormData({ ...formData, doctor_notes: e.target.value })}
             rows={4}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             placeholder="Internal notes for this prescription..."
           />
         </div>
@@ -447,7 +447,7 @@ export function PrescriptionBuilder({
           </button>
           <button
             type="submit"
-            disabled={loading || (validation && !validation.valid)}
+            disabled={loading || (validation ? !validation.valid : false)}
             className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {loading ? (

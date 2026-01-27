@@ -146,7 +146,7 @@ export function validatePrescription(prescription: Partial<Prescription>): {
     errors.push("Refills cannot be negative");
   }
 
-  if (prescription.duration_days !== undefined && prescription.duration_days <= 0) {
+  if (prescription.duration_days != null && prescription.duration_days <= 0) {
     errors.push("Duration must be greater than 0");
   }
 

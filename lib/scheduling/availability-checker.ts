@@ -35,10 +35,11 @@ export async function checkDoctorAvailability(
     .in("type", ["time_off", "holiday", "emergency"])
     .or(`start_date.lte.${requestedDate},end_date.gte.${requestedDate}`);
 
-  if (timeOff && timeOff.length > 0) {
+  const typedTimeOff = (timeOff as Array<{ type: string }> | null) || [];
+  if (typedTimeOff.length > 0) {
     return {
       available: false,
-      reason: `Doctor has ${timeOff[0].type.replace("_", " ")} scheduled`,
+      reason: `Doctor has ${typedTimeOff[0].type.replace("_", " ")} scheduled`,
     };
   }
 
@@ -52,8 +53,10 @@ export async function checkDoctorAvailability(
     .eq("type", "working_hours")
     .eq("day_of_week", dayOfWeek);
 
-  if (workingHours && workingHours.length > 0) {
-    const schedule = workingHours[0];
+  const typedWorkingHoursList =
+    (workingHours as Array<{ start_time: string | null; end_time: string | null }> | null) || [];
+  if (typedWorkingHoursList.length > 0) {
+    const schedule = typedWorkingHoursList[0];
     if (schedule.start_time && schedule.end_time) {
       const requestedTime = requestedDateTime.toTimeString().split(" ")[0];
       if (requestedTime < schedule.start_time || requestedTime > schedule.end_time) {
@@ -119,9 +122,10 @@ export async function getAvailableTimeSlots(
   }
 
   const slots: string[] = [];
-  if (workingHours.start_time && workingHours.end_time) {
-    const start = new Date(`${dateString}T${workingHours.start_time}`);
-    const end = new Date(`${dateString}T${workingHours.end_time}`);
+  const typedWorkingHours = workingHours as { start_time: string | null; end_time: string | null } | null;
+  if (typedWorkingHours?.start_time && typedWorkingHours?.end_time) {
+    const start = new Date(`${dateString}T${typedWorkingHours.start_time}`);
+    const end = new Date(`${dateString}T${typedWorkingHours.end_time}`);
 
     let current = new Date(start);
     while (current < end) {

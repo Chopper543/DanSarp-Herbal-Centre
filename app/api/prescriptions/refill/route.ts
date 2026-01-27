@@ -27,16 +27,20 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific refill
     if (refillId) {
-      query = query.eq("id", refillId).single();
       // @ts-ignore
-      const { data: refill, error } = await query;
+      const { data: refill, error } = await supabase
+        .from("prescription_refills")
+        .select("*")
+        .eq("id", refillId)
+        .single();
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
       // Check permissions
-      if (!isUserAdmin && refill.patient_id !== user.id) {
+      const typedRefill = refill as { patient_id: string } | null;
+      if (!isUserAdmin && typedRefill?.patient_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -119,7 +123,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if prescription has refills remaining
-    if (prescription.refills_remaining <= 0) {
+    const typedPrescription = prescription as { refills_remaining: number } | null;
+    if ((typedPrescription?.refills_remaining || 0) <= 0) {
       return NextResponse.json(
         { error: "No refills remaining for this prescription" },
         { status: 400 }
@@ -153,7 +158,8 @@ export async function POST(request: NextRequest) {
     // @ts-ignore
     const { data: refill, error } = await supabase
       .from("prescription_refills")
-      .insert(refillData)
+      // @ts-ignore - Supabase type inference issue
+      .insert(refillData as any)
       .select()
       .single();
 
@@ -212,6 +218,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Refill request not found" }, { status: 404 });
     }
 
+    const typedExistingRefill = existingRefill as {
+      prescription_id: string;
+      requested_refills: number | null;
+    } | null;
+
     // Update refill request
     const updateData: any = {
       status,
@@ -227,7 +238,8 @@ export async function PUT(request: NextRequest) {
     // @ts-ignore
     const { data: refill, error } = await supabase
       .from("prescription_refills")
-      .update(updateData)
+      // @ts-ignore - Supabase type inference issue
+      .update(updateData as any)
       .eq("id", id)
       .select()
       .single();
@@ -242,20 +254,22 @@ export async function PUT(request: NextRequest) {
       const { data: prescription, error: prescriptionError } = await supabase
         .from("prescriptions")
         .select("refills_remaining")
-        .eq("id", existingRefill.prescription_id)
+        .eq("id", typedExistingRefill?.prescription_id || "")
         .single();
 
       if (!prescriptionError && prescription) {
+        const typedPrescription = prescription as { refills_remaining: number } | null;
         const newRefillsRemaining = Math.max(
           0,
-          prescription.refills_remaining - (existingRefill.requested_refills || 1)
+          (typedPrescription?.refills_remaining || 0) - (typedExistingRefill?.requested_refills || 1)
         );
 
         // @ts-ignore
         await supabase
           .from("prescriptions")
-          .update({ refills_remaining: newRefillsRemaining })
-          .eq("id", existingRefill.prescription_id);
+          // @ts-ignore - Supabase type inference issue
+          .update({ refills_remaining: newRefillsRemaining } as any)
+          .eq("id", typedExistingRefill?.prescription_id || "");
       }
     }
 

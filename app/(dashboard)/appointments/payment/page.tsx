@@ -179,6 +179,26 @@ function AppointmentPaymentContent() {
   };
 
   const handlePayment = async () => {
+    // Hard-block: verify prerequisites before taking payment
+    try {
+      const prereqRes = await fetch("/api/booking/prerequisites");
+      const prereq = await prereqRes.json();
+      if (!prereqRes.ok) {
+        throw new Error(prereq?.error || "Failed to check booking prerequisites");
+      }
+      if (!prereq.canProceed) {
+        alert(
+          "Booking is blocked until you verify your email, add full name + phone, and submit required intake forms."
+        );
+        router.push("/appointments");
+        return;
+      }
+    } catch (err: any) {
+      alert(err?.message || "Failed to check booking prerequisites");
+      router.push("/appointments");
+      return;
+    }
+
     if (!validatePaymentForm()) {
       return;
     }

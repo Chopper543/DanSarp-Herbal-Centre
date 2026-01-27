@@ -4,9 +4,10 @@ import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -29,7 +30,7 @@ export async function GET(
     const { data: labResult, error } = await supabase
       .from("lab_results")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) {
@@ -37,11 +38,12 @@ export async function GET(
     }
 
     // Check permissions (patients see own; staff can see all)
-    if (!isStaff && labResult.patient_id !== user.id && labResult.doctor_id !== user.id) {
+    const typedLabResult = labResult as { patient_id: string; doctor_id: string } | null;
+    if (!isStaff && typedLabResult?.patient_id !== user.id && typedLabResult?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    return NextResponse.json({ labResult }, { status: 200 });
+    return NextResponse.json({ lab_result: labResult }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -49,9 +51,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -75,7 +78,7 @@ export async function PUT(
     const { data: existingLabResult, error: fetchError } = await supabase
       .from("lab_results")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (fetchError || !existingLabResult) {
@@ -83,7 +86,8 @@ export async function PUT(
     }
 
     // Check permissions (clinical staff can update; otherwise only assigned doctor)
-    if (!canUpdate && existingLabResult.doctor_id !== user.id) {
+    const typedExistingLabResult = existingLabResult as { doctor_id: string } | null;
+    if (!canUpdate && typedExistingLabResult?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -97,8 +101,9 @@ export async function PUT(
     // @ts-ignore
     const { data: labResult, error } = await supabase
       .from("lab_results")
-      .update(updatePayload)
-      .eq("id", params.id)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
+      .eq("id", id)
       .select()
       .single();
 
@@ -106,7 +111,7 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ labResult }, { status: 200 });
+    return NextResponse.json({ lab_result: labResult }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -114,9 +119,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -135,7 +141,7 @@ export async function DELETE(
     }
 
     // @ts-ignore
-    const { error } = await supabase.from("lab_results").delete().eq("id", params.id);
+    const { error } = await supabase.from("lab_results").delete().eq("id", id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });

@@ -27,15 +27,19 @@ export async function GET(request: NextRequest) {
     let query = supabase.from("treatment_plans").select("*", { count: "exact" });
 
     if (planId) {
-      query = query.eq("id", planId).single();
       // @ts-ignore
-      const { data: plan, error } = await query;
+      const { data: plan, error } = await supabase
+        .from("treatment_plans")
+        .select("*")
+        .eq("id", planId)
+        .single();
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
-      if (!isUserAdmin && plan.patient_id !== user.id && plan.doctor_id !== user.id) {
+      const typedPlan = plan as { patient_id: string; doctor_id: string } | null;
+      if (!isUserAdmin && typedPlan?.patient_id !== user.id && typedPlan?.doctor_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -158,7 +162,8 @@ export async function POST(request: NextRequest) {
     // @ts-ignore
     const { data: plan, error } = await supabase
       .from("treatment_plans")
-      .insert(planData)
+      // @ts-ignore - Supabase type inference issue
+      .insert(planData as any)
       .select()
       .single();
 
@@ -204,7 +209,8 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Treatment plan not found" }, { status: 404 });
     }
 
-    if (!isUserAdmin && existingPlan.doctor_id !== user.id) {
+    const typedExistingPlan = existingPlan as { doctor_id: string } | null;
+    if (!isUserAdmin && typedExistingPlan?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -217,7 +223,8 @@ export async function PUT(request: NextRequest) {
     // @ts-ignore
     const { data: plan, error } = await supabase
       .from("treatment_plans")
-      .update(updatePayload)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
       .eq("id", id)
       .select()
       .single();

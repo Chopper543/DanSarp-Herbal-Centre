@@ -2,7 +2,6 @@
 const nextConfig = {
   // Production optimizations
   compress: true,
-  swcMinify: true,
   reactStrictMode: true,
   poweredByHeader: false, // Security: remove X-Powered-By header
   productionBrowserSourceMaps: false, // Security: disable source maps in production

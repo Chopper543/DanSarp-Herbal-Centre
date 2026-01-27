@@ -27,16 +27,20 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific form
     if (formId) {
-      query = query.eq("id", formId).single();
       // @ts-ignore
-      const { data: form, error } = await query;
+      const { data: form, error } = await supabase
+        .from("intake_forms")
+        .select("*")
+        .eq("id", formId)
+        .single();
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
       // Check permissions - only active forms are visible to non-admins
-      if (!isUserAdmin && !form.is_active) {
+      const typedForm = form as { is_active: boolean } | null;
+      if (!isUserAdmin && !typedForm?.is_active) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, form_schema, is_active } = body;
+    const { name, description, form_schema, is_active, required_for_booking } = body;
 
     // Validation
     if (!name || !form_schema) {
@@ -121,13 +125,15 @@ export async function POST(request: NextRequest) {
       description: description || null,
       form_schema: form_schema as FormSchema,
       is_active: is_active !== undefined ? is_active : true,
+      required_for_booking: Boolean(required_for_booking),
       created_by: user.id,
     };
 
     // @ts-ignore
     const { data: form, error } = await supabase
       .from("intake_forms")
-      .insert(formData)
+      // @ts-ignore - Supabase type inference issue
+      .insert(formData as any)
       .select()
       .single();
 
@@ -189,7 +195,8 @@ export async function PUT(request: NextRequest) {
     // @ts-ignore
     const { data: form, error } = await supabase
       .from("intake_forms")
-      .update(updatePayload)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
       .eq("id", id)
       .select()
       .single();

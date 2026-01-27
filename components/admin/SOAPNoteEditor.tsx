@@ -79,6 +79,78 @@ export function SOAPNoteEditor({
     });
   };
 
+  const extractStoragePathFromPublicUrl = (url: string) => {
+    // Expected shape: .../storage/v1/object/public/<bucket>/<path>
+    const marker = "/storage/v1/object/public/clinical-notes/";
+    const idx = url.indexOf(marker);
+    if (idx === -1) return null;
+    return url.slice(idx + marker.length);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      setUploading(true);
+      const uploadedUrls: string[] = [];
+
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("bucket", "clinical-notes");
+        fd.append("folder", formData.patient_id || "unknown");
+        fd.append("file", file);
+
+        const res = await fetch("/api/storage/upload", { method: "POST", body: fd });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json?.error || "Upload failed");
+        }
+        if (json?.url) uploadedUrls.push(String(json.url));
+      }
+
+      if (uploadedUrls.length > 0) {
+        setFormData((prev) => ({
+          ...prev,
+          attachments: [...prev.attachments, ...uploadedUrls],
+        }));
+      }
+    } catch (err: any) {
+      alert(err?.message || "Failed to upload attachment(s)");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeAttachment = async (index: number) => {
+    const url = formData.attachments[index];
+    if (!url) return;
+
+    // Optimistically remove from UI
+    setFormData((prev) => ({
+      ...prev,
+      attachments: prev.attachments.filter((_, i) => i !== index),
+    }));
+
+    const path = extractStoragePathFromPublicUrl(url);
+    if (!path) return;
+
+    try {
+      const res = await fetch(
+        `/api/storage/upload?bucket=clinical-notes&path=${encodeURIComponent(path)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        // Don’t block UI; just log/alert
+        const json = await res.json().catch(() => ({}));
+        console.error("Failed to delete attachment:", json);
+      }
+    } catch (err) {
+      console.error("Failed to delete attachment:", err);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
       <div className="flex justify-between items-center mb-6">
@@ -125,7 +197,7 @@ export function SOAPNoteEditor({
                 value={formData.subjective}
                 onChange={(e) => setFormData({ ...formData, subjective: e.target.value })}
                 rows={12}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 placeholder="Patient's chief complaint, history of present illness, review of systems..."
               />
             </div>
@@ -141,7 +213,7 @@ export function SOAPNoteEditor({
                   value={formData.objective}
                   onChange={(e) => setFormData({ ...formData, objective: e.target.value })}
                   rows={8}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   placeholder="Physical examination findings, vital signs, test results..."
                 />
               </div>
@@ -160,7 +232,7 @@ export function SOAPNoteEditor({
                       value={formData.vital_signs.blood_pressure || ""}
                       onChange={(e) => updateVitalSign("blood_pressure", e.target.value)}
                       placeholder="120/80"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     />
                   </div>
                   <div>
@@ -172,7 +244,7 @@ export function SOAPNoteEditor({
                       value={formData.vital_signs.pulse || ""}
                       onChange={(e) => updateVitalSign("pulse", parseInt(e.target.value) || null)}
                       placeholder="72"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     />
                   </div>
                   <div>
@@ -188,12 +260,12 @@ export function SOAPNoteEditor({
                           updateVitalSign("temperature", parseFloat(e.target.value) || null)
                         }
                         placeholder="37.0"
-                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                       />
                       <select
                         value={formData.vital_signs.temperature_unit || "celsius"}
                         onChange={(e) => updateVitalSign("temperature_unit", e.target.value)}
-                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                       >
                         <option value="celsius">°C</option>
                         <option value="fahrenheit">°F</option>

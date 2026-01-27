@@ -65,7 +65,7 @@ export function IntakeFormFiller({
             required={field.required}
             placeholder={field.placeholder}
             rows={4}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
           />
         );
       case "select":
@@ -74,7 +74,7 @@ export function IntakeFormFiller({
             value={value}
             onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
             required={field.required}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
           >
             <option value="">Select...</option>
             {field.options?.map((option) => (
@@ -136,7 +136,7 @@ export function IntakeFormFiller({
             value={value}
             onChange={(e) => setFormValues({ ...formValues, [field.name]: e.target.value })}
             required={field.required}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
           />
         );
       case "file":

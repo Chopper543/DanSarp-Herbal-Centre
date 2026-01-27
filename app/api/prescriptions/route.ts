@@ -28,16 +28,20 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific prescription
     if (prescriptionId) {
-      query = query.eq("id", prescriptionId).single();
       // @ts-ignore
-      const { data: prescription, error } = await query;
+      const { data: prescription, error } = await supabase
+        .from("prescriptions")
+        .select("*")
+        .eq("id", prescriptionId)
+        .single();
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
 
       // Check permissions
-      if (!isUserAdmin && prescription.patient_id !== user.id && prescription.doctor_id !== user.id) {
+      const typedPrescription = prescription as { patient_id: string; doctor_id: string } | null;
+      if (!isUserAdmin && typedPrescription?.patient_id !== user.id && typedPrescription?.doctor_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -175,7 +179,8 @@ export async function POST(request: NextRequest) {
     // @ts-ignore
     const { data: prescription, error } = await supabase
       .from("prescriptions")
-      .insert(prescriptionData)
+      // @ts-ignore - Supabase type inference issue
+      .insert(prescriptionData as any)
       .select()
       .single();
 
@@ -223,7 +228,8 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check permissions
-    if (!isUserAdmin && existingPrescription.doctor_id !== user.id) {
+    const typedExistingPrescription = existingPrescription as { doctor_id: string } | null;
+    if (!isUserAdmin && typedExistingPrescription?.doctor_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -244,7 +250,8 @@ export async function PUT(request: NextRequest) {
     // @ts-ignore
     const { data: prescription, error } = await supabase
       .from("prescriptions")
-      .update(updatePayload)
+      // @ts-ignore - Supabase type inference issue
+      .update(updatePayload as any)
       .eq("id", id)
       .select()
       .single();
@@ -301,7 +308,8 @@ export async function DELETE(request: NextRequest) {
     // @ts-ignore
     const { error } = await supabase
       .from("prescriptions")
-      .update({ status: "cancelled", updated_by: user.id })
+      // @ts-ignore - Supabase type inference issue
+      .update({ status: "cancelled", updated_by: user.id } as any)
       .eq("id", id);
 
     if (error) {

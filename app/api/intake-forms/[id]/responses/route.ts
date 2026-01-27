@@ -5,9 +5,10 @@ import { IntakeFormResponse } from "@/types";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -29,7 +30,7 @@ export async function GET(
     let query = supabase
       .from("intake_form_responses")
       .select("*", { count: "exact" })
-      .eq("form_id", params.id);
+      .eq("form_id", id);
 
     // Filter by patient_id if provided
     if (patientId) {
@@ -78,9 +79,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -106,7 +108,7 @@ export async function POST(
     const { data: form, error: formError } = await supabase
       .from("intake_forms")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (formError || !form) {
@@ -116,7 +118,8 @@ export async function POST(
     // Check if form is active (for non-admins)
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
-    if (!isUserAdmin && !form.is_active) {
+    const typedForm = form as { is_active: boolean } | null;
+    if (!isUserAdmin && !typedForm?.is_active) {
       return NextResponse.json({ error: "This form is not currently active" }, { status: 403 });
     }
 
@@ -125,13 +128,14 @@ export async function POST(
     const { data: existingResponse } = await supabase
       .from("intake_form_responses")
       .select("*")
-      .eq("form_id", params.id)
+      .eq("form_id", id)
       .eq("patient_id", user.id)
       .eq("status", "draft")
       .single();
 
     let responseData: any;
-    if (existingResponse) {
+    const typedExistingResponse = existingResponse as { id: string } | null;
+    if (typedExistingResponse) {
       // Update existing draft
       responseData = {
         response_data,
@@ -143,8 +147,9 @@ export async function POST(
       // @ts-ignore
       const { data: updatedResponse, error: updateError } = await supabase
         .from("intake_form_responses")
-        .update(responseData)
-        .eq("id", existingResponse.id)
+        // @ts-ignore - Supabase type inference issue
+        .update(responseData as any)
+        .eq("id", typedExistingResponse.id)
         .select()
         .single();
 
@@ -156,7 +161,7 @@ export async function POST(
     } else {
       // Create new response
       responseData = {
-        form_id: params.id,
+        form_id: id,
         patient_id: user.id,
         appointment_id: appointment_id || null,
         response_data,
@@ -167,7 +172,8 @@ export async function POST(
       // @ts-ignore
       const { data: newResponse, error: insertError } = await supabase
         .from("intake_form_responses")
-        .insert(responseData)
+        // @ts-ignore - Supabase type inference issue
+        .insert(responseData as any)
         .select()
         .single();
 

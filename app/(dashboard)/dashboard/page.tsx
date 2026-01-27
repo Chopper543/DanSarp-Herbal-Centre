@@ -9,6 +9,7 @@ import { UpcomingAppointmentsWidget } from "@/components/dashboard/UpcomingAppoi
 import { PaymentSummaryWidget } from "@/components/dashboard/PaymentSummaryWidget";
 import { UserRatingDisplay } from "@/components/dashboard/UserRatingDisplay";
 import { EmailVerificationBanner } from "@/components/dashboard/EmailVerificationBanner";
+import { BookingPrerequisitesBanner } from "@/components/dashboard/BookingPrerequisitesBanner";
 import { Calendar, PlusCircle, FileText, MessageSquare, Shield } from "lucide-react";
 import { calculateUserRatingClient } from "@/lib/utils/calculate-user-rating-client";
 import { getUserRole, isAdmin, isSuperAdmin, isUserOnly } from "@/lib/auth/rbac-client";
@@ -123,6 +124,9 @@ export default function DashboardPage() {
             emailVerified={emailVerified}
           />
         )}
+
+        {/* Booking prerequisites checklist (patients only) */}
+        {showPatientFeatures && <BookingPrerequisitesBanner />}
 
         {/* Welcome Section */}
         <div className="mb-8">

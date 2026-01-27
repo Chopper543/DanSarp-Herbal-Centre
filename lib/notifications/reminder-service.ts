@@ -25,7 +25,7 @@ export async function sendAppointmentReminders(
     .from("appointments")
     .select(`
       *,
-      users!appointments_user_id_fkey (
+      user:users!appointments_user_id_fkey (
         id,
         email,
         phone,
@@ -39,12 +39,13 @@ export async function sendAppointmentReminders(
     throw new Error("Appointment not found");
   }
 
-  const user = appointment.users;
+  const typedAppointment = appointment as any;
+  const user = typedAppointment.user as any;
   if (!user) {
     throw new Error("User not found");
   }
 
-  const appointmentDate = new Date(appointment.appointment_date);
+  const appointmentDate = new Date(typedAppointment.appointment_date);
   const now = new Date();
 
   for (const hoursBefore of preferences.reminderTiming) {
@@ -55,7 +56,7 @@ export async function sendAppointmentReminders(
       // For now, we'll just send immediately if it's time
       if (reminderTime <= new Date(now.getTime() + 60000)) {
         // Within 1 minute of reminder time
-        await sendReminder(appointment, user, preferences);
+        await sendReminder(typedAppointment, user, preferences);
       }
     }
   }
@@ -67,19 +68,21 @@ async function sendReminder(
   preferences: ReminderPreferences
 ): Promise<void> {
   if (preferences.email && user.email) {
-    await sendAppointmentConfirmation({
-      email: user.email,
-      name: user.full_name || "Patient",
-      appointmentDate: new Date(appointment.appointment_date),
-      treatmentType: appointment.treatment_type,
+    const apptDate = new Date(appointment.appointment_date);
+    await sendAppointmentConfirmation(user.email, {
+      date: apptDate.toLocaleDateString(),
+      time: apptDate.toLocaleTimeString(),
+      treatment: appointment.treatment_type,
+      branch: "Main Branch",
     });
   }
 
   if (preferences.whatsapp && user.phone) {
-    await sendAppointmentReminder({
-      phone: user.phone,
-      appointmentDate: new Date(appointment.appointment_date),
-      treatmentType: appointment.treatment_type,
+    const apptDate = new Date(appointment.appointment_date);
+    await sendAppointmentReminder(user.phone, {
+      date: apptDate.toLocaleDateString(),
+      time: apptDate.toLocaleTimeString(),
+      treatment: appointment.treatment_type,
     });
   }
 }

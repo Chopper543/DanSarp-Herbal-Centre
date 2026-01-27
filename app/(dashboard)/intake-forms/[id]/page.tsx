@@ -62,7 +62,7 @@ export default function PatientIntakeFormFillPage() {
       const url = `/api/intake-forms/${form.id}/responses`;
       const method = responseId ? "PUT" : "POST";
 
-      const fetchResponse = await fetch(url, {
+      const saveRes = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -72,7 +72,7 @@ export default function PatientIntakeFormFillPage() {
         }),
       });
 
-      if (fetchResponse.ok) {
+      if (saveRes.ok) {
         await fetchResponse(form.id);
       }
     } catch (err) {
@@ -88,7 +88,7 @@ export default function PatientIntakeFormFillPage() {
       const url = `/api/intake-forms/${form.id}/responses`;
       const method = responseId ? "PUT" : "POST";
 
-      const fetchResponse = await fetch(url, {
+      const submitRes = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -98,9 +98,9 @@ export default function PatientIntakeFormFillPage() {
         }),
       });
 
-      const data = await fetchResponse.json();
+      const data = await submitRes.json();
 
-      if (fetchResponse.ok) {
+      if (submitRes.ok) {
         alert("Form submitted successfully!");
         window.location.href = "/intake-forms";
       } else {

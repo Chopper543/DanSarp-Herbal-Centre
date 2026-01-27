@@ -61,10 +61,6 @@ export default function AdminLayout({
   const mainNavItems = [
     { href: "/admin", label: "Dashboard" },
     { href: "/admin/appointments", label: "Appointments" },
-    { href: "/admin/prescriptions", label: "Prescriptions" },
-    { href: "/admin/lab-results", label: "Lab Results" },
-    { href: "/admin/clinical-notes", label: "Clinical Notes" },
-    { href: "/admin/intake-forms", label: "Intake Forms" },
     { href: "/admin/content", label: "Content" },
     { href: "/admin/payments", label: "Payments" },
     { href: "/admin/users", label: "Users" },
@@ -74,6 +70,10 @@ export default function AdminLayout({
   ];
 
   const superAdminItems = [
+    { href: "/admin/prescriptions", label: "Prescriptions" },
+    { href: "/admin/lab-results", label: "Lab Results" },
+    { href: "/admin/clinical-notes", label: "Clinical Notes" },
+    { href: "/admin/intake-forms", label: "Intake Forms" },
     { href: "/admin/admins", label: "Admin Management" },
     { href: "/admin/invites", label: "Admin Invites" },
     { href: "/admin/audit-logs", label: "Audit Logs" },

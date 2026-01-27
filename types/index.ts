@@ -478,6 +478,7 @@ export interface IntakeForm {
   description: string | null;
   form_schema: FormSchema;
   is_active: boolean;
+  required_for_booking: boolean;
   created_at: string;
   updated_at: string;
   created_by: string | null;

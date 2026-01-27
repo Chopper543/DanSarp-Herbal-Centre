@@ -21,6 +21,7 @@ export function IntakeFormBuilder({
     name: form?.name || "",
     description: form?.description || "",
     is_active: form?.is_active !== undefined ? form.is_active : true,
+    required_for_booking: Boolean((form as any)?.required_for_booking),
     form_schema: (form?.form_schema || { fields: [] }) as FormSchema,
   });
 
@@ -133,7 +134,7 @@ export function IntakeFormBuilder({
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
           <div>
@@ -145,12 +146,32 @@ export function IntakeFormBuilder({
               onChange={(e) =>
                 setFormData({ ...formData, is_active: e.target.value === "active" })
               }
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
           </div>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={formData.required_for_booking}
+              onChange={(e) => setFormData({ ...formData, required_for_booking: e.target.checked })}
+              className="mt-1 rounded"
+            />
+            <div>
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                Required before booking
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                If enabled, patients must submit this form before they can proceed to appointment
+                payment/booking.
+              </div>
+            </div>
+          </label>
         </div>
 
         <div>
@@ -161,7 +182,7 @@ export function IntakeFormBuilder({
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             rows={3}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
           />
         </div>
 

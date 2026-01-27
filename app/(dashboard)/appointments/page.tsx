@@ -17,6 +17,8 @@ export default function AppointmentsPage() {
   const [branches, setBranches] = useState<any[]>([]);
   const [treatments, setTreatments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
+  const [blockedDetails, setBlockedDetails] = useState<any>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const router = useRouter();
@@ -66,6 +68,27 @@ export default function AppointmentsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check prerequisites (hard-block) before going to payment
+    try {
+      setBlockedReason(null);
+      setBlockedDetails(null);
+      const prereqRes = await fetch("/api/booking/prerequisites");
+      const prereq = await prereqRes.json();
+      if (!prereqRes.ok) {
+        throw new Error(prereq?.error || "Failed to check booking prerequisites");
+      }
+      if (!prereq.canProceed) {
+        setBlockedReason(
+          "Before you can book an appointment, please verify your email, complete your profile (full name + phone), and submit all required intake forms."
+        );
+        setBlockedDetails(prereq);
+        return;
+      }
+    } catch (err: any) {
+      setBlockedReason(err?.message || "Failed to check booking prerequisites");
+      return;
+    }
     
     // Validate form
     if (!branchId || !treatmentType || !selectedTime) {
@@ -132,6 +155,46 @@ export default function AppointmentsPage() {
           Book Appointment
         </h1>
 
+        {blockedReason && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
+            <div className="font-medium mb-2">Booking blocked</div>
+            <div className="text-sm">{blockedReason}</div>
+            {blockedDetails?.missingRequiredForms?.length > 0 && (
+              <div className="text-sm mt-2">
+                Missing intake forms:{" "}
+                <span className="font-medium">
+                  {blockedDetails.missingRequiredForms.map((f: any) => f.name).join(", ")}
+                </span>
+                . Please complete them in{" "}
+                <button
+                  type="button"
+                  onClick={() => router.push("/intake-forms")}
+                  className="underline font-medium"
+                >
+                  Intake Forms
+                </button>
+                .
+              </div>
+            )}
+            <div className="flex flex-wrap gap-3 mt-3">
+              <button
+                type="button"
+                onClick={() => router.push("/profile/edit")}
+                className="text-sm px-4 py-2 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100/40 dark:hover:bg-red-900/30 transition-colors"
+              >
+                Edit profile
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                className="text-sm px-4 py-2 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100/40 dark:hover:bg-red-900/30 transition-colors"
+              >
+                Go to dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 lg:p-8 space-y-6">
           <div>
             <label className="block text-sm font-medium mb-4 text-gray-700 dark:text-gray-300">
@@ -174,7 +237,7 @@ export default function AppointmentsPage() {
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             >
               <option value="">Select a branch</option>
               {branches.map((branch) => (
@@ -193,7 +256,7 @@ export default function AppointmentsPage() {
               value={treatmentType}
               onChange={(e) => setTreatmentType(e.target.value)}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             >
               <option value="">Select treatment</option>
               {treatments.map((treatment) => (
@@ -212,7 +275,7 @@ export default function AppointmentsPage() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
           </div>
 
