@@ -27,14 +27,11 @@ export function isValidE164Format(phone: string): boolean {
 }
 
 /**
- * Validates Ghana mobile phone number format specifically for Twilio
- * Ghana mobile numbers: +233 followed by 9 digits (prefix 24, 20, or 27 + 7 digits)
- * @param phone - Phone number in E.164 format
- * @returns true if phone is a valid Ghana mobile number
+ * Validates Ghana mobile phone number (E.164: +233 + 9 digits).
+ * NDC prefixes (2026): MTN 024,025,053,054,055,059; Telecel 020,050; AT 027,057,026,056; Glo 023.
  */
 export function isValidGhanaMobileNumber(phone: string): boolean {
-  // Ghana mobile: +233(24|20|27) + 7 digits = 13 total characters
-  const ghanaMobileRegex = /^\+233(24|20|27)\d{7}$/;
+  const ghanaMobileRegex = /^\+233(20|50|24|25|53|54|55|59|27|57|26|56|23)\d{7}$/;
   return ghanaMobileRegex.test(phone);
 }
 

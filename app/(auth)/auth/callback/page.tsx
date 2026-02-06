@@ -34,22 +34,18 @@ function AuthCallbackContent() {
         if (exchangeError) throw exchangeError;
 
         if (data.user) {
-          // Update users table with phone if available from metadata
+          // Upsert public.users so a row always exists (trigger may have created it; this is fallback and backfill)
           const phone = data.user.phone || data.user.user_metadata?.phone;
           const fullName = data.user.user_metadata?.full_name || data.user.user_metadata?.name;
-
-          if (phone || fullName) {
-            const updates: any = {};
-            if (phone) updates.phone = phone;
-            if (fullName) updates.full_name = fullName;
-
-            // @ts-ignore - Supabase type inference issue with users table
-            await supabase
-              .from("users")
-              // @ts-ignore - Supabase type inference issue
-              .update(updates)
-              .eq("id", data.user.id);
-          }
+          const payload = {
+            id: data.user.id,
+            email: data.user.email ?? "",
+            full_name: fullName ?? null,
+            phone: phone ?? null,
+            email_verified: !!data.user.email_confirmed_at,
+          };
+          // @ts-ignore - Supabase type inference issue with users table
+          await supabase.from("users").upsert(payload, { onConflict: "id" });
 
           setStatus("success");
           // Redirect to dashboard after a brief delay

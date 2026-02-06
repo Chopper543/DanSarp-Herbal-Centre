@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { BotanicalParticles } from "@/components/particles/BotanicalParticles";
 import { HeroParallax } from "@/components/animations/HeroParallax";
+import { HeroTestimonials, type HeroTestimonial } from "./HeroTestimonials";
 
 const messages = [
   "Restoring Health. Naturally.",
@@ -13,7 +14,7 @@ const messages = [
   "Nature's Wisdom, Modern Care.",
 ];
 
-export function HeroSection() {
+export function HeroSection({ testimonials = [] }: { testimonials?: HeroTestimonial[] }) {
   const [currentMessage, setCurrentMessage] = useState(0);
   const [displayText, setDisplayText] = useState("");
   const [isTyping, setIsTyping] = useState(true);
@@ -92,6 +93,10 @@ export function HeroSection() {
                 </Button>
               </Link>
             </div>
+
+            {testimonials.length > 0 && (
+              <HeroTestimonials testimonials={testimonials} />
+            )}
           </motion.div>
         </div>
 

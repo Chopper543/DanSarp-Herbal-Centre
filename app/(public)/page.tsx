@@ -20,13 +20,13 @@ export default async function HomePage() {
     .limit(4)
     .order("name", { ascending: true });
   
-  // Fetch top 3 approved testimonials
+  // Fetch approved testimonials for hero carousel and preview section (limit 6 for hero)
   // @ts-ignore - Supabase type inference issue with testimonials table
   const { data: testimonials } = await supabase
     .from("testimonials")
-    .select("*")
+    .select("id, patient_name, content")
     .eq("is_approved", true)
-    .limit(3)
+    .limit(6)
     .order("created_at", { ascending: false });
 
   // Fetch recent blog posts
@@ -36,6 +36,15 @@ export default async function HomePage() {
     .select("*")
     .eq("status", "published")
     .limit(3)
+    .order("created_at", { ascending: false });
+
+  // Fetch approved reviews for landing page section
+  // @ts-ignore - Supabase type inference issue with reviews table
+  const { data: reviews } = await supabase
+    .from("reviews")
+    .select("id, rating, title, content, created_at, user:users(full_name)")
+    .eq("is_approved", true)
+    .limit(6)
     .order("created_at", { ascending: false });
   
   const typedTreatments = (treatments as Array<{
@@ -49,8 +58,8 @@ export default async function HomePage() {
     id: string;
     patient_name: string | null;
     content: string;
-    media_type: "image" | "audio" | "video";
-    media_url: string;
+    media_type?: "image" | "audio" | "video";
+    media_url?: string;
   }> | null) || [];
 
   const typedBlogPosts = (blogPosts as Array<{
@@ -61,96 +70,66 @@ export default async function HomePage() {
     featured_image: string | null;
     created_at: string;
   }> | null) || [];
+
+  const typedReviews = (reviews as Array<{
+    id: string;
+    rating: number;
+    title: string;
+    content: string;
+    created_at: string;
+    user: { full_name: string | null } | null;
+  }> | null) || [];
+
   return (
     <div className="min-h-screen overflow-x-hidden">
       <Navbar />
       
-      <HeroSection />
+      <HeroSection testimonials={typedTestimonials} />
 
-      {/* Why Choose Us Section */}
+      {/* Why Choose DanSarp (merged credibility section) */}
       <section className="py-20 bg-white dark:bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal>
             <h2 className="text-4xl font-bold text-center mb-12 text-gray-900 dark:text-white">
-              Why Choose Us
+              Why Choose DanSarp
             </h2>
           </ScrollReveal>
-          
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
             {[
               {
+                Icon: Shield,
                 title: "Certified Professionals",
-                description: "Our team consists of certified herbal practitioners with years of experience.",
-                icon: "✓",
+                description: "Licensed herbal practitioners with years of experience.",
               },
               {
+                Icon: Heart,
                 title: "Natural Healing",
-                description: "We use only natural, organic herbs and traditional healing methods.",
-                icon: "🌿",
+                description: "Natural, organic herbs and traditional healing methods.",
               },
               {
-                title: "Proven Results",
-                description: "Thousands of patients have found relief and healing through our treatments.",
-                icon: "💚",
+                Icon: CheckCircle,
+                title: "Verified Treatments",
+                description: "Approved treatments and proven results for thousands of patients.",
               },
-            ].map((feature, index) => (
-              <ScrollReveal key={index} delay={index * 0.2}>
-                <div className="bg-gray-50 dark:bg-gray-800 p-6 sm:p-8 rounded-2xl hover:shadow-lg transition-shadow">
-                  <div className="text-4xl mb-4">{feature.icon}</div>
-                  <h3 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
-                    {feature.title}
+              {
+                Icon: Award,
+                title: "Award Winning Care",
+                description: "Recognition for excellence in herbal medicine and patient care.",
+              },
+            ].map((item, index) => (
+              <ScrollReveal key={index} delay={index * 0.1}>
+                <div className="bg-gray-50 dark:bg-gray-800 p-6 sm:p-8 rounded-2xl hover:shadow-lg transition-shadow text-center">
+                  <item.Icon className="w-12 h-12 mx-auto mb-4 text-primary-600 dark:text-primary-400" />
+                  <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
+                    {item.title}
                   </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {feature.description}
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">
+                    {item.description}
                   </p>
                 </div>
               </ScrollReveal>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* Trust Badges/Certifications Section */}
-      <section className="py-16 bg-gray-50 dark:bg-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <ScrollReveal>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-              {[
-                {
-                  icon: Shield,
-                  title: "Certified",
-                  description: "Licensed Practitioners",
-                },
-                {
-                  icon: CheckCircle,
-                  title: "Verified",
-                  description: "Approved Treatments",
-                },
-                {
-                  icon: Award,
-                  title: "Award Winning",
-                  description: "Recognition & Excellence",
-                },
-                {
-                  icon: Heart,
-                  title: "Trusted",
-                  description: "10,000+ Patients",
-                },
-              ].map((badge, index) => (
-                <ScrollReveal key={index} delay={index * 0.1}>
-                  <div className="text-center">
-                    <badge.icon className="w-12 h-12 mx-auto mb-3 text-primary-600 dark:text-primary-400" />
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                      {badge.title}
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {badge.description}
-                    </p>
-                  </div>
-                </ScrollReveal>
-              ))}
-            </div>
-          </ScrollReveal>
         </div>
       </section>
 
@@ -192,6 +171,60 @@ export default async function HomePage() {
               <Link href="/treatments">
                 <button className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-semibold">
                   View All Services →
+                </button>
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Patient Reviews Section */}
+      {typedReviews.length > 0 && (
+        <section className="py-20 bg-gray-50 dark:bg-gray-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ScrollReveal>
+              <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+                Patient Reviews
+              </h2>
+              <p className="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
+                What our patients say about us
+              </p>
+            </ScrollReveal>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+              {typedReviews.map((review, index) => (
+                <ScrollReveal key={review.id} delay={index * 0.1}>
+                  <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md hover:shadow-xl transition-shadow">
+                    <div className="flex mb-4">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`w-5 h-5 ${
+                            i < review.rating
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-gray-300 dark:text-gray-600"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    {review.title && (
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        {review.title}
+                      </h3>
+                    )}
+                    <p className="text-gray-700 dark:text-gray-300 mb-4 line-clamp-4">
+                      {review.content}
+                    </p>
+                    <p className="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                      — {review.user?.full_name ?? "A patient"}
+                    </p>
+                  </div>
+                </ScrollReveal>
+              ))}
+            </div>
+            <div className="text-center mt-8">
+              <Link href="/reviews">
+                <button className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-semibold">
+                  View all reviews
                 </button>
               </Link>
             </div>
@@ -242,55 +275,6 @@ export default async function HomePage() {
           </ScrollReveal>
         </div>
       </section>
-
-      {/* Testimonials Preview Section */}
-      {typedTestimonials.length > 0 && (
-        <section className="py-20 bg-gray-50 dark:bg-gray-800">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <ScrollReveal>
-              <h2 className="text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
-                What Our Patients Say
-              </h2>
-              <p className="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
-                Real stories from patients who have experienced healing through our treatments.
-              </p>
-            </ScrollReveal>
-            
-            <div className="grid md:grid-cols-3 gap-6 md:gap-8">
-              {typedTestimonials.map((testimonial, index) => (
-                <ScrollReveal key={testimonial.id} delay={index * 0.15}>
-                  <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md hover:shadow-xl transition-shadow">
-                    <div className="flex mb-4">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          className="w-5 h-5 fill-yellow-400 text-yellow-400"
-                        />
-                      ))}
-                    </div>
-                    <p className="text-gray-700 dark:text-gray-300 mb-4 italic line-clamp-4">
-                      "{testimonial.content}"
-                    </p>
-                    {testimonial.patient_name && (
-                      <p className="text-sm font-semibold text-primary-600 dark:text-primary-400">
-                        — {testimonial.patient_name}
-                      </p>
-                    )}
-                  </div>
-                </ScrollReveal>
-              ))}
-            </div>
-            
-            <div className="text-center mt-8">
-              <Link href="/testimonials">
-                <button className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-semibold">
-                  Read More Testimonials →
-                </button>
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* How It Works Section */}
       <section className="py-20 bg-white dark:bg-gray-900">

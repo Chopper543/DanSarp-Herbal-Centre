@@ -3,39 +3,21 @@
  */
 
 /**
- * Validates Ghana phone number format
- * Accepts both local format (024XXXXXXX) and international format (+233XXXXXXXXX)
- * Local format: 024XXXXXXX, 020XXXXXXX, 027XXXXXXX (exactly 10 digits: 3-digit prefix + 7 digits)
- * International format: +233XXXXXXXXX (E.164 format with country code)
+ * Ghana mobile NDC prefixes (2026): MTN (024,025,053,054,055,059), Telecel (020,050),
+ * AT (027,057,026,056), Glo (023). Validates local (0XXXXXXXXX) and international (+233XXXXXXXXX).
+ */
+const GHANA_PHONE_REGEX = /^(?:\+233|0)(?:20|50|24|25|53|54|55|59|27|57|26|56|23)\d{7}$/;
+
+/**
+ * Validates Ghana phone number format.
+ * Accepts local format (0XXXXXXXXX) and international (+233XXXXXXXXX) for all major networks.
  */
 export function validateGhanaPhoneNumber(phone: string): boolean {
   if (!phone || phone.trim() === '') {
     return false;
   }
-
-  const cleaned = phone.replace(/\s+/g, '');
-  
-  // Check for international format (+233XXXXXXXXX)
-  if (cleaned.startsWith('+233')) {
-    // E.164 format: +233 followed by 9 digits (total 13 characters)
-    const internationalRegex = /^\+233(24|20|27)\d{7}$/;
-    return internationalRegex.test(cleaned);
-  }
-  
-  // Check for local format (024XXXXXXXX)
-  // Ghanaian numbers are exactly 10 digits: 3-digit prefix + 7 digits
-  const localRegex = /^(024|020|027)\d{7}$/;
-  if (localRegex.test(cleaned)) {
-    return true;
-  }
-  
-  // Check for international format without + (233XXXXXXXXX)
-  if (cleaned.startsWith('233')) {
-    const internationalWithoutPlus = /^233(24|20|27)\d{7}$/;
-    return internationalWithoutPlus.test(cleaned);
-  }
-  
-  return false;
+  const cleaned = phone.replace(/\s+/g, '').trim();
+  return GHANA_PHONE_REGEX.test(cleaned);
 }
 
 /**

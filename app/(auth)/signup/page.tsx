@@ -45,7 +45,7 @@ export default function SignupPage() {
 
     // Only validate phone if it's provided
     if (formatted && !validateGhanaPhoneNumber(formatted)) {
-      setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
+      setPhoneError("Please enter a valid Ghana phone number (e.g., 024XXXXXXX, 020XXXXXXX, +233XXXXXXXXX)");
     } else {
       setPhoneError("");
     }
@@ -117,7 +117,7 @@ export default function SignupPage() {
 
     // Validate phone only if provided
     if (phoneNumber.trim() && !validateGhanaPhoneNumber(phoneNumber)) {
-      setPhoneError("Please enter a valid Ghana phone number (024XXXXXXXX or +233XXXXXXXXX)");
+      setPhoneError("Please enter a valid Ghana phone number (e.g., 024XXXXXXX, 020XXXXXXX, +233XXXXXXXXX)");
       setLoading(false);
       return;
     }
@@ -152,18 +152,18 @@ export default function SignupPage() {
       }
 
       if (data.user) {
-        // Update users table with phone number if provided
-        if (data.user.id && phoneNumber.trim()) {
-          // @ts-ignore - Supabase type inference issue with users table
-          const { error: dbError } = await supabase
-            .from("users")
-            // @ts-ignore - Supabase type inference issue
-            .update({ phone: phoneNumber })
-            .eq("id", data.user.id);
-
-          if (dbError) {
-            console.error("Failed to update users table:", dbError);
-          }
+        // Upsert public.users so a row exists (trigger may have created it; this is fallback)
+        const payload = {
+          id: data.user.id,
+          email: trimmedEmail,
+          full_name: trimmedFullName,
+          phone: phoneNumber.trim() || null,
+          email_verified: false,
+        };
+        // @ts-ignore - Supabase type inference issue with users table
+        const { error: dbError } = await supabase.from("users").upsert(payload, { onConflict: "id" });
+        if (dbError) {
+          console.error("Failed to upsert users table:", dbError);
         }
 
         setSuccess(true);
@@ -317,14 +317,14 @@ export default function SignupPage() {
                     ? "border-red-500 dark:border-red-500"
                     : "border-gray-300 dark:border-gray-600"
                 }`}
-                placeholder="0244123456 or +233244123456"
+                placeholder="e.g. 0544808098 or +233544808098"
               />
             </div>
             {phoneError && phoneTouched && (
               <p className="mt-1 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
             )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Optional: Enter a Ghana phone number: 0244123456 or +233244123456
+              Optional: Enter a valid Ghana phone number (e.g., 024XXXXXXX, 020XXXXXXX, +233XXXXXXXXX)
             </p>
           </div>
 

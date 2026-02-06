@@ -2,6 +2,7 @@ import { Navbar } from "@/components/features/Navbar";
 import { ScrollReveal } from "@/components/animations/ScrollReveal";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database";
+import Link from "next/link";
 
 export default async function AboutPage() {
   const supabase = await createClient();
@@ -68,6 +69,23 @@ export default async function AboutPage() {
               </ScrollReveal>
             </>
           )}
+
+          <ScrollReveal delay={0.8}>
+            <section className="mt-16 pt-12 border-t border-gray-200 dark:border-gray-700 text-center">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Meet Our Founder
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-xl mx-auto">
+                Learn about the vision and experience behind DanSarp Herbal Centre.
+              </p>
+              <Link
+                href="/about/founder"
+                className="inline-block bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                About the Founder & CEO
+              </Link>
+            </section>
+          </ScrollReveal>
         </div>
       </div>
     </div>

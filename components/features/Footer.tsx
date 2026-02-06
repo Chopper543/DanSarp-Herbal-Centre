@@ -59,6 +59,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/about/founder" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
+                  Our Founder
+                </Link>
+              </li>
+              <li>
                 <Link href="/treatments" className="hover:text-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 py-1 inline-block min-h-[32px] flex items-center">
                   Treatments
                 </Link>
