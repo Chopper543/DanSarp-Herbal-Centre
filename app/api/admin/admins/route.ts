@@ -27,9 +27,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ admins });
   } catch (error: any) {
+    const status = error.message === "Forbidden" ? 403 : 401;
     return NextResponse.json(
       { error: error.message || "Failed to fetch admins" },
-      { status: 401 }
+      { status }
     );
   }
 }
@@ -119,9 +120,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ user: data });
   } catch (error: any) {
+    const status =
+      error.message === "Unauthorized" ? 401 : error.message === "Forbidden" ? 403 : 500;
     return NextResponse.json(
       { error: error.message || "Failed to update admin role" },
-      { status: 500 }
+      { status }
     );
   }
 }

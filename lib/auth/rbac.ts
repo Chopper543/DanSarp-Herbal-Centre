@@ -60,6 +60,15 @@ export function isUserOnly(userRole: UserRole | null): boolean {
   return userRole === "user";
 }
 
+// Re-export capability helpers for consistent RBAC usage (server)
+export {
+  canAccessSection,
+  canAccessAuditLogs,
+  canAccessPaymentLedger,
+  getAdminSectionsForRole,
+} from "@/lib/auth/role-capabilities";
+export type { AdminSection } from "@/lib/auth/role-capabilities";
+
 export async function requireAuth(requiredRoles?: UserRole[]) {
   const supabase = await createClient();
   const {

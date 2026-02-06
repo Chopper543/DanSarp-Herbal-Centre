@@ -5,8 +5,30 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getUserRole, isClinicalStaff, isSuperAdmin } from "@/lib/auth/rbac-client";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
+import type { AdminSection } from "@/lib/auth/role-capabilities";
 import { UserRole } from "@/types";
 import { ChevronDown, Menu, X } from "lucide-react";
+
+const ADMIN_NAV: { section: AdminSection; href: string; label: string }[] = [
+  { section: "dashboard", href: "/admin", label: "Dashboard" },
+  { section: "appointments", href: "/admin/appointments", label: "Appointments" },
+  { section: "content", href: "/admin/content", label: "Content" },
+  { section: "payments", href: "/admin/payments", label: "Payments" },
+  { section: "users", href: "/admin/users", label: "Users" },
+  { section: "patient_records", href: "/admin/patient-records", label: "Patient Records" },
+  { section: "newsletter", href: "/admin/newsletter", label: "Newsletter" },
+  { section: "messages", href: "/admin/messages", label: "Messages" },
+  { section: "prescriptions", href: "/admin/prescriptions", label: "Prescriptions" },
+  { section: "lab_results", href: "/admin/lab-results", label: "Lab Results" },
+  { section: "clinical_notes", href: "/admin/clinical-notes", label: "Clinical Notes" },
+  { section: "intake_forms", href: "/admin/intake-forms", label: "Intake Forms" },
+  { section: "admins", href: "/admin/admins", label: "Admin Management" },
+  { section: "invites", href: "/admin/invites", label: "Admin Invites" },
+  { section: "audit_logs", href: "/admin/audit-logs", label: "Audit Logs" },
+  { section: "database", href: "/admin/database", label: "Database Tools" },
+  { section: "system", href: "/admin/system", label: "System Settings" },
+];
 
 export default function AdminLayout({
   children,
@@ -58,30 +80,23 @@ export default function AdminLayout({
     return null;
   }
 
-  const mainNavItems = [
-    { href: "/admin", label: "Dashboard" },
-    { href: "/admin/appointments", label: "Appointments" },
-    { href: "/admin/content", label: "Content" },
-    { href: "/admin/payments", label: "Payments" },
-    { href: "/admin/users", label: "Users" },
-    { href: "/admin/patient-records", label: "Patient Records" },
-    { href: "/admin/newsletter", label: "Newsletter" },
-    { href: "/admin/messages", label: "Messages" },
-  ];
-
-  const superAdminItems = [
-    { href: "/admin/prescriptions", label: "Prescriptions" },
-    { href: "/admin/lab-results", label: "Lab Results" },
-    { href: "/admin/clinical-notes", label: "Clinical Notes" },
-    { href: "/admin/intake-forms", label: "Intake Forms" },
-    { href: "/admin/admins", label: "Admin Management" },
-    { href: "/admin/invites", label: "Admin Invites" },
-    { href: "/admin/audit-logs", label: "Audit Logs" },
-    { href: "/admin/database", label: "Database Tools" },
-    { href: "/admin/system", label: "System Settings" },
-  ];
-
+  const navItems = ADMIN_NAV.filter((item) =>
+    canAccessSection(userRole, item.section)
+  );
   const isUserSuperAdmin = userRole && isSuperAdmin(userRole);
+  const superAdminOnlySections: AdminSection[] = [
+    "admins",
+    "invites",
+    "audit_logs",
+    "database",
+    "system",
+  ];
+  const mainNavItems = navItems.filter(
+    (item) => !superAdminOnlySections.includes(item.section)
+  );
+  const superAdminItems = navItems.filter((item) =>
+    superAdminOnlySections.includes(item.section)
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

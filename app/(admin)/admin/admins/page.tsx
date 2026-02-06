@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 import { Shield, User, AlertCircle } from "lucide-react";
@@ -12,7 +12,6 @@ export default function AdminManagementPage() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
-  const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
@@ -20,12 +19,11 @@ export default function AdminManagementPage() {
       const role = await getUserRole();
       setUserRole(role);
 
-      if (!isSuperAdmin(role)) {
-        router.push("/admin");
-        return;
+      if (isSuperAdmin(role)) {
+        fetchAdmins();
+      } else {
+        setLoading(false);
       }
-
-      fetchAdmins();
     }
 
     checkAuth();
@@ -77,7 +75,23 @@ export default function AdminManagementPage() {
   }
 
   if (!userRole || !isSuperAdmin(userRole)) {
-    return null;
+    return (
+      <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6 text-center">
+        <Shield className="w-12 h-12 text-amber-600 dark:text-amber-400 mx-auto mb-3" />
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          Access restricted
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          Only Super Admins can assign or change user roles. If you need this access, contact a Super Admin.
+        </p>
+        <Link
+          href="/admin"
+          className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors"
+        >
+          Back to Admin Dashboard
+        </Link>
+      </div>
+    );
   }
 
   const roleOptions: { value: UserRole; label: string }[] = [

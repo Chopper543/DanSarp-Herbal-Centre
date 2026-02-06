@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole } from "@/lib/auth/rbac";
+import { canAccessAuditLogs } from "@/lib/auth/role-capabilities";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,9 +15,7 @@ export async function GET(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
-
-    if (!isUserAdmin) {
+    if (!canAccessAuditLogs(userRole)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

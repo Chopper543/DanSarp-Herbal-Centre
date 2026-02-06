@@ -61,3 +61,12 @@ export function isSuperAdmin(userRole: UserRole | null): boolean {
 export function isUserOnly(userRole: UserRole | null): boolean {
   return userRole === "user";
 }
+
+// Re-export capability helpers for consistent RBAC usage
+export {
+  canAccessSection,
+  canAccessAuditLogs,
+  canAccessPaymentLedger,
+  getAdminSectionsForRole,
+} from "@/lib/auth/role-capabilities";
+export type { AdminSection } from "@/lib/auth/role-capabilities";
