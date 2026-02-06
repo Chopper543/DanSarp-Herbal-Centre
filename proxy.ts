@@ -19,7 +19,12 @@ export async function proxy(request: NextRequest) {
     }
 
     const identifier = getRateLimitIdentifier(request);
-    const result = await checkRateLimit(identifier, pathname);
+    // Normalize clinical-notes detail routes (e.g. /api/clinical-notes/[id]) so they use the same limit
+    const rateLimitPath =
+      pathname.startsWith("/api/clinical-notes/") && !pathname.startsWith("/api/clinical-notes/search")
+        ? "/api/clinical-notes"
+        : pathname;
+    const result = await checkRateLimit(identifier, rateLimitPath);
 
     if (!result.success) {
       const errorResponse = NextResponse.json(

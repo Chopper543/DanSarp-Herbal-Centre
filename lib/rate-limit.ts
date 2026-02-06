@@ -82,7 +82,11 @@ export const rateLimitConfigs: Record<string, RateLimitConfig> = {
   
   // Newsletter - prevent spam
   "/api/newsletter": { maxRequests: 3, windowSeconds: 60 },
-  
+
+  // Clinical notes - higher limit for admin list/search/detail usage
+  "/api/clinical-notes": { maxRequests: 120, windowSeconds: 60 },
+  "/api/clinical-notes/search": { maxRequests: 120, windowSeconds: 60 },
+
   // General API - default limits
   default: { maxRequests: 30, windowSeconds: 60 },
 };

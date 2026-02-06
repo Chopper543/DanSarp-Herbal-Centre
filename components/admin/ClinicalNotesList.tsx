@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ClinicalNote, NoteType } from "@/types";
 import { Search, Eye, Edit, Trash2, Filter } from "lucide-react";
@@ -48,12 +48,22 @@ export function ClinicalNotesList({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const onSearchRef = useRef(onSearch);
+  onSearchRef.current = onSearch;
+  const isInitialMount = useRef(true);
+
   useEffect(() => {
     const handle = setTimeout(() => {
-      onSearch(query.trim());
+      // Skip redundant fetch on initial mount when query is empty (parent already fetches)
+      if (isInitialMount.current && query === "") {
+        isInitialMount.current = false;
+        return;
+      }
+      if (query !== "") isInitialMount.current = false;
+      onSearchRef.current?.(query.trim());
     }, 250);
     return () => clearTimeout(handle);
-  }, [query, onSearch]);
+  }, [query]);
 
   const displayedNotes = useMemo(() => notes, [notes]);
 

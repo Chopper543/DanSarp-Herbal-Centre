@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ClinicalNote } from "@/types";
 import { SOAPNoteEditor } from "@/components/admin/SOAPNoteEditor";
 import { ClinicalNotesList } from "@/components/admin/ClinicalNotesList";
@@ -14,11 +14,7 @@ export default function AdminClinicalNotesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchNotes();
-  }, []);
-
-  const fetchNotes = async (search?: string, filters?: any) => {
+  const fetchNotes = useCallback(async (search?: string, filters?: any) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -43,7 +39,11 @@ export default function AdminClinicalNotesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchNotes();
+  }, [fetchNotes]);
 
   const handleSave = async (formData: any) => {
     try {
@@ -93,14 +93,14 @@ export default function AdminClinicalNotesPage() {
     }
   };
 
-  const handleSearch = (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     fetchNotes(query);
-  };
+  }, [fetchNotes]);
 
-  const handleFilter = (filters: any) => {
+  const handleFilter = useCallback((filters: any) => {
     fetchNotes(searchQuery, filters);
-  };
+  }, [fetchNotes, searchQuery]);
 
   if (loading && notes.length === 0) {
     return (
