@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
 import { sendAppointmentConfirmation } from "@/lib/email/resend";
+import { sendAppointmentReminderSMS } from "@/lib/sms/vonage";
 
 export interface ReminderPreferences {
   email: boolean;
@@ -62,5 +63,11 @@ export async function dispatchReminder(
     });
   }
 
-  // SMS path exists via Vonage but is not yet wired; keep preference for future use.
+  if (preferences.sms && user.phone) {
+    await sendAppointmentReminderSMS(user.phone, {
+      date: apptDate.toLocaleDateString(),
+      time: apptDate.toLocaleTimeString(),
+      treatment: typedAppointment.treatment_type,
+    });
+  }
 }

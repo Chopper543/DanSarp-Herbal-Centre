@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { z } from "zod";
+
+const SubscribeRequestSchema = z.object({
+  email: z.string().email(),
+});
+
+const UpdateSubscriberSchema = z.object({
+  id: z.string().uuid(),
+  is_active: z.boolean(),
+});
+
+export { SubscribeRequestSchema, UpdateSubscriberSchema };
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
-
-    if (!email || !email.includes("@")) {
+    const body = await request.json();
+    const parsed = SubscribeRequestSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Valid email is required" },
+        { error: "Valid email is required", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+
+    const { email } = parsed.data;
 
     const supabase = await createClient();
 
@@ -113,11 +127,15 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, is_active } = body;
-
-    if (!id || is_active === undefined) {
-      return NextResponse.json({ error: "id and is_active are required" }, { status: 400 });
+    const parsed = UpdateSubscriberSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
+
+    const { id, is_active } = parsed.data;
 
     // @ts-ignore - Supabase type inference issue with newsletter_subscribers table
     const { data: subscriber, error } = await supabase

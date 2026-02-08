@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { IntakeForm, FormSchema } from "@/types";
+import { z } from "zod";
+
+const IntakeFormCreateSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional().nullable(),
+  form_schema: z
+    .object({
+      fields: z.array(z.any()).min(1, "Form schema must contain at least one field"),
+    })
+    .passthrough(),
+  is_active: z.boolean().optional(),
+  required_for_booking: z.boolean().optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,23 +114,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, form_schema, is_active, required_for_booking } = body;
-
-    // Validation
-    if (!name || !form_schema) {
+    const parsed = IntakeFormCreateSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Name and form schema are required" },
+        { error: "Invalid intake form payload", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
 
-    // Validate form schema structure
-    if (!form_schema.fields || !Array.isArray(form_schema.fields) || form_schema.fields.length === 0) {
-      return NextResponse.json(
-        { error: "Form schema must contain at least one field" },
-        { status: 400 }
-      );
-    }
+    const { name, description, form_schema, is_active, required_for_booking } = parsed.data;
 
     // Create intake form
     const formData = {

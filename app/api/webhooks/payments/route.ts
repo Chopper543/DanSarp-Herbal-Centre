@@ -2,7 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { paymentService } from "@/lib/payments/payment-service";
 import { sendEmail } from "@/lib/email/resend";
+import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/validate-request-size";
 import crypto from "crypto";
+import { logger } from "@/lib/monitoring/logger";
+
+export function verifyFlutterwaveSignature(
+  rawBody: string,
+  signature: string | null,
+  secretHash?: string
+): boolean {
+  if (!secretHash) {
+    throw new Error("Webhook secret not configured");
+  }
+
+  if (!signature) {
+    return false;
+  }
+
+  const hash = crypto.createHmac("sha512", secretHash).update(rawBody).digest("hex");
+  return hash === signature;
+}
 
 async function createAppointmentFromPayment(supabase: any, payment: any) {
   // Check if payment has appointment_data in metadata
@@ -47,27 +66,43 @@ async function createAppointmentFromPayment(supabase: any, payment: any) {
       .single();
 
     if (error || !appointment) {
-      console.error("Failed to create appointment from payment:", error);
+      logger.error("Failed to create appointment from payment", error);
       return null;
     }
 
     // Link payment to appointment
     // @ts-ignore - Supabase type inference issue
-    await supabase
+    const { error: linkError } = await supabase
       .from("payments")
       // @ts-ignore - Supabase type inference issue
       .update({ appointment_id: appointment.id })
       .eq("id", payment.id);
 
+    if (linkError) {
+      // Roll back appointment to keep data consistent
+      // @ts-ignore - Supabase type inference issue with appointments table
+      await supabase.from("appointments").delete().eq("id", appointment.id);
+      logger.error("Failed to link payment to appointment", linkError);
+      return null;
+    }
+
     return appointment;
   } catch (error) {
-    console.error("Error creating appointment from payment:", error);
+    logger.error("Error creating appointment from payment", error);
     return null;
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const sizeCheck = await validateRequestSize(
+      request,
+      getMaxSizeForContentType(request.headers.get("content-type"))
+    );
+    if (sizeCheck) {
+      return sizeCheck;
+    }
+
     // Get raw body for signature verification (Paystack requires raw body)
     const rawBody = await request.text();
     const body = JSON.parse(rawBody);
@@ -181,24 +216,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify Flutterwave webhook signature
+    // Verify Flutterwave webhook signature (mandatory in production)
     if (provider === "flutterwave") {
-      const secretHash = process.env.FLUTTERWAVE_SECRET_HASH;
-      if (secretHash) {
-        const signature = request.headers.get("verif-hash");
-        if (!signature) {
-          return NextResponse.json({ error: "Missing signature" }, { status: 401 });
-        }
-
-        // Flutterwave uses SHA512 hash of raw body with secret hash
-        const hash = crypto
-          .createHmac("sha512", secretHash)
-          .update(rawBody)
-          .digest("hex");
-
-        if (hash !== signature) {
+      try {
+        const valid = verifyFlutterwaveSignature(
+          rawBody,
+          request.headers.get("verif-hash"),
+          process.env.FLUTTERWAVE_SECRET_HASH
+        );
+        if (!valid) {
           return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
         }
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
       }
     }
 
@@ -256,7 +286,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (error: any) {
-    console.error("Webhook error:", error);
+    logger.error("Webhook error", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

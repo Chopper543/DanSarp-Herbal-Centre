@@ -4,6 +4,18 @@ import { sendAppointmentConfirmation } from "@/lib/email/resend";
 import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
+import { z } from "zod";
+import { logger } from "@/lib/monitoring/logger";
+
+const AppointmentRequestSchema = z.object({
+  branch_id: z.string().uuid(),
+  appointment_date: z.string().datetime(),
+  treatment_type: z.string().min(1, "treatment_type is required"),
+  notes: z.string().optional().nullable(),
+  payment_id: z.string().uuid(),
+});
+
+export { AppointmentRequestSchema };
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +38,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { branch_id, appointment_date, treatment_type, notes, payment_id } = body;
+    const parsed = AppointmentRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid appointment request", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { branch_id, appointment_date, treatment_type, notes, payment_id } = parsed.data;
 
     // Enforce booking prerequisites (cannot be bypassed)
     const prereq = await evaluateBookingPrerequisites();
@@ -83,6 +103,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const appointmentDate = new Date(appointment_date);
+    const windowStart = new Date(appointmentDate.getTime() - 60 * 60 * 1000);
+    const windowEnd = new Date(appointmentDate.getTime() + 60 * 60 * 1000);
+
+    // Prevent overlapping bookings within a 1-hour window at the same branch
+    // @ts-ignore - Supabase type inference issue with appointments table
+    const { data: conflictingAppointments } = await supabase
+      .from("appointments")
+      .select("id, appointment_date, status")
+      .eq("branch_id", branch_id)
+      .in("status", ["pending", "confirmed"])
+      .gte("appointment_date", windowStart.toISOString())
+      .lte("appointment_date", windowEnd.toISOString())
+      .limit(1);
+
+    if (conflictingAppointments && conflictingAppointments.length > 0) {
+      return NextResponse.json(
+        { error: "Selected time is unavailable. Please choose another slot." },
+        { status: 409 }
+      );
+    }
+
     // Create appointment
     const { data: appointment, error } = await supabase
       .from("appointments")
@@ -106,11 +148,21 @@ export async function POST(request: NextRequest) {
     const typedAppointment = appointment as { id: string } | null;
     if (typedAppointment && payment_id) {
       // @ts-ignore - Supabase type inference issue with payments table
-      await supabase
+      const { error: linkError } = await supabase
         .from("payments")
         // @ts-ignore - Supabase type inference issue with payments table
         .update({ appointment_id: typedAppointment.id })
         .eq("id", payment_id);
+
+      if (linkError) {
+        // Roll back appointment to avoid orphaned bookings
+        // @ts-ignore - Supabase type inference issue with appointments table
+        await supabase.from("appointments").delete().eq("id", typedAppointment.id);
+        return NextResponse.json(
+          { error: "Failed to link payment to appointment. Please try again." },
+          { status: 500 }
+        );
+      }
     }
 
     // Get user details for notifications
@@ -143,7 +195,7 @@ export async function POST(request: NextRequest) {
           branch: typedBranch?.name || "Main Branch",
         });
       } catch (emailError) {
-        console.error("Failed to send email:", emailError);
+        logger.error("Failed to send appointment confirmation email", emailError);
       }
     }
 
@@ -156,7 +208,7 @@ export async function POST(request: NextRequest) {
           treatment: treatment_type,
         });
       } catch (whatsappError) {
-        console.error("Failed to send WhatsApp:", whatsappError);
+        logger.error("Failed to send WhatsApp reminder", whatsappError);
       }
     }
 
@@ -361,7 +413,7 @@ export async function PATCH(request: NextRequest) {
             branch: "Your Branch", // Could fetch branch name
           });
         } catch (emailError) {
-          console.error("Failed to send email:", emailError);
+          logger.error("Failed to send reschedule confirmation email", emailError);
         }
       }
 

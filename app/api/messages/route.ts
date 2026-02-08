@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { z } from "zod";
+
+const MessageRequestSchema = z
+  .object({
+    recipient_id: z.string().uuid().optional(),
+    department: z.enum(["care_team", "billing", "admin"]).optional(),
+    appointment_id: z.string().uuid().optional(),
+    subject: z.string().min(1).max(200),
+    content: z.string().min(1).max(5000),
+  })
+  .refine(
+    (data) => Boolean(data.recipient_id) || Boolean(data.department),
+    "recipient_id or department is required"
+  );
+
+export { MessageRequestSchema };
 
 async function getDepartmentRecipientId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -131,14 +147,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { recipient_id, department, appointment_id, subject, content } = body;
-
-    if ((!recipient_id && !department) || !subject || !content) {
+    const parsed = MessageRequestSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "recipient_id or department, subject, and content are required" },
+        { error: "Invalid message payload", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+
+    const { recipient_id, department, appointment_id, subject, content } = parsed.data;
 
     // Get sender's role
     const senderRole = await getUserRole();
