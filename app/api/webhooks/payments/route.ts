@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { paymentService } from "@/lib/payments/payment-service";
+import { sendEmail } from "@/lib/email/resend";
 import crypto from "crypto";
 
 async function createAppointmentFromPayment(supabase: any, payment: any) {
@@ -18,8 +19,13 @@ async function createAppointmentFromPayment(supabase: any, payment: any) {
     return null; // Appointment already created
   }
 
-  // Verify payment is completed and amount is 100 GHS
-  if (payment.status !== 'completed' || parseFloat(payment.amount.toString()) !== 100) {
+  // Verify payment is completed
+  if (payment.status !== 'completed') {
+    return null;
+  }
+
+  // Optional toggle to enable/disable auto creation
+  if (metadata.appointment_data.auto_create === false) {
     return null;
   }
 
@@ -65,10 +71,37 @@ export async function POST(request: NextRequest) {
     // Get raw body for signature verification (Paystack requires raw body)
     const rawBody = await request.text();
     const body = JSON.parse(rawBody);
-    const provider = request.headers.get("x-provider") || "paystack";
+
+    // Determine transaction id and fetch payment to anchor provider
+    const paystackRef = body?.data?.reference;
+    const flutterwaveId = body?.data?.id?.toString();
+    const incomingEvent = body?.event;
+    const incomingProviderHeader = request.headers.get("x-provider") || "";
+
+    const providerTransactionId = paystackRef || flutterwaveId;
+    if (!providerTransactionId) {
+      return NextResponse.json({ error: "Missing transaction reference" }, { status: 400 });
+    }
+
+    const supabase = createServiceClient();
+
+    // Fetch the persisted payment to get trusted provider
+    const { data: payment } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("provider_transaction_id", providerTransactionId)
+      .single();
+
+    if (!payment) {
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    }
+
+    const provider = payment.provider;
+    if (!["paystack", "flutterwave"].includes(provider)) {
+      return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });
+    }
 
     // Verify webhook signature (implement based on provider)
-    // For Paystack:
     if (provider === "paystack") {
       const hash = crypto
         .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY || "")
@@ -81,13 +114,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Process webhook based on provider
-    const supabase = await createClient();
-
     // Handle Paystack events (including mobile money)
     if (provider === "paystack") {
       // Handle charge.success (for mobile money and other payment methods)
-      if (body.event === "charge.success") {
-        const transactionRef = body.data.reference;
+      if (incomingEvent === "charge.success") {
+        const transactionRef = paystackRef;
         
         // Verify payment
         const paymentResponse = await paymentService.verifyPayment(
@@ -96,15 +127,8 @@ export async function POST(request: NextRequest) {
         );
 
         // Get payment record
-        // @ts-ignore - Supabase type inference issue
-        const { data: payment } = await supabase
-          .from("payments")
-          .select("*")
-          .eq("provider_transaction_id", transactionRef)
-          .single();
-
-        if (payment) {
-          // Update payment status
+        // Update payment status (idempotent-ish: only update if changed)
+        if (paymentResponse.status !== payment.status) {
           // @ts-ignore - Supabase type inference issue with payments table
           await supabase
             .from("payments")
@@ -112,28 +136,38 @@ export async function POST(request: NextRequest) {
             .update({
               status: paymentResponse.status,
               metadata: paymentResponse.metadata,
+              updated_at: new Date().toISOString(),
             })
             .eq("provider_transaction_id", transactionRef);
+        }
 
-          // If payment is completed and has appointment_data, create appointment
-          if (paymentResponse.status === 'completed') {
-            // @ts-ignore - Supabase type inference issue
-            const { data: updatedPayment } = await supabase
-              .from("payments")
-              .select("*")
-              .eq("provider_transaction_id", transactionRef)
-              .single();
-            
-            if (updatedPayment) {
-              await createAppointmentFromPayment(supabase, updatedPayment);
+        // If payment is completed and has appointment_data, create appointment
+        if (paymentResponse.status === 'completed') {
+          // @ts-ignore - Supabase type inference issue
+          const { data: updatedPayment } = await supabase
+            .from("payments")
+            .select("*, users!payments_user_id_fkey(email)")
+            .eq("provider_transaction_id", transactionRef)
+            .single();
+          
+          if (updatedPayment) {
+            await createAppointmentFromPayment(supabase, updatedPayment);
+            const userEmail = (updatedPayment as any)?.users?.email;
+            if (userEmail) {
+              // Fire-and-forget notification
+              sendEmail({
+                to: userEmail,
+                subject: "Payment received",
+                html: `<p>Your payment (${paymentResponse.metadata?.reference_code || transactionRef}) was completed successfully.</p>`,
+              }).catch(() => {});
             }
           }
         }
       }
 
       // Handle charge.failed for mobile money
-      if (body.event === "charge.failed") {
-        const transactionRef = body.data.reference;
+      if (incomingEvent === "charge.failed") {
+        const transactionRef = paystackRef;
         
         // @ts-ignore - Supabase type inference issue with payments table
         await supabase
@@ -168,8 +202,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (provider === "flutterwave" && body.event === "charge.completed") {
-      const transactionId = body.data.id.toString();
+    if (provider === "flutterwave" && incomingEvent === "charge.completed") {
+      const transactionId = flutterwaveId;
       
       // Verify payment
       const paymentResponse = await paymentService.verifyPayment(
@@ -193,6 +227,7 @@ export async function POST(request: NextRequest) {
         .update({
           status: paymentResponse.status,
           metadata: paymentResponse.metadata,
+          updated_at: new Date().toISOString(),
         })
         .eq("provider_transaction_id", transactionId);
 
@@ -201,12 +236,20 @@ export async function POST(request: NextRequest) {
         // @ts-ignore - Supabase type inference issue
         const { data: updatedPayment } = await supabase
           .from("payments")
-          .select("*")
+          .select("*, users!payments_user_id_fkey(email)")
           .eq("provider_transaction_id", transactionId)
           .single();
         
         if (updatedPayment) {
           await createAppointmentFromPayment(supabase, updatedPayment);
+          const userEmail = (updatedPayment as any)?.users?.email;
+          if (userEmail) {
+            sendEmail({
+              to: userEmail,
+              subject: "Payment received",
+              html: `<p>Your payment (${paymentResponse.metadata?.reference_code || transactionId}) was completed successfully.</p>`,
+            }).catch(() => {});
+          }
         }
       }
     }

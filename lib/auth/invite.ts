@@ -101,6 +101,18 @@ export async function acceptInvite(token: string, userId: string) {
     throw new Error("Invalid or expired invite token");
   }
 
+   // Ensure the user's email matches the invite email
+  const { data: userRecord } = await supabase
+    .from("users")
+    .select("email")
+    .eq("id", userId)
+    .single();
+
+  const userEmail = (userRecord?.email || "").toLowerCase();
+  if (!userEmail || userEmail !== invite.email.toLowerCase()) {
+    throw new Error("Invite email does not match the signed-in user");
+  }
+
   // Update user role
   const { error: userError } = await supabase
     .from("users")

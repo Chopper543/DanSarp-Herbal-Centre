@@ -40,6 +40,10 @@ const GHANAIAN_BANKS = [
 function AppointmentPaymentContent() {
   const [appointmentData, setAppointmentData] = useState<any>(null);
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentInstructions, setPaymentInstructions] = useState<{
+    title: string;
+    lines: string[];
+  } | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
@@ -239,15 +243,29 @@ function AppointmentPaymentContent() {
       if (paymentResponse.ok) {
         const paymentData = await paymentResponse.json();
         
+        const metadata = paymentData.payment?.metadata || {};
+
+        // Surface instructions/reference codes for custom rails
+        if (paymentData.payment?.id && ["mtn_momo", "vodafone_cash", "airteltigo", "bank_transfer", "ghqr"].includes(paymentMethod)) {
+          const lines: string[] = [];
+          if (metadata.reference_code) lines.push(`Reference: ${metadata.reference_code}`);
+          if (metadata.instructions) lines.push(metadata.instructions);
+          if (metadata.ghqr_payload) lines.push(`GHQR Payload: ${metadata.ghqr_payload}`);
+          setPaymentInstructions({
+            title: paymentMethod === "ghqr" ? "GHQR Payment Instructions" : "Payment Instructions",
+            lines: lines.length ? lines : ["Follow the provider prompt to complete payment."],
+          });
+        }
+
         // For mobile money payments, show message and poll for completion
         if (["mtn_momo", "vodafone_cash", "airteltigo"].includes(paymentMethod)) {
           if (paymentData.payment?.id) {
-            // Show Paystack's display_text message if available, otherwise use default
-            const displayMessage = paymentData.payment?.metadata?.display_text || 
+            const displayMessage =
+              metadata.display_text ||
+              metadata.instructions ||
               "A payment prompt has been sent to your phone. Please enter your Mobile Money PIN to complete the transaction. We will check your payment status automatically.";
             alert(displayMessage);
-            
-            // Start polling for payment completion
+
             pollForPaymentCompletion(paymentData.payment.id);
             return;
           }
@@ -255,7 +273,6 @@ function AppointmentPaymentContent() {
         
         // If payment URL is returned, redirect to payment gateway (for card payments)
         if (paymentData.payment_url) {
-          // Store payment ID in sessionStorage for callback
           if (paymentData.payment?.id) {
             sessionStorage.setItem('pendingPaymentId', paymentData.payment.id);
           }
@@ -481,6 +498,30 @@ function AppointmentPaymentContent() {
           Complete Payment
         </h1>
 
+        {paymentInstructions && (
+          <div className="mb-6 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                {paymentInstructions.title}
+              </h3>
+              <button
+                onClick={() => {
+                  const text = paymentInstructions.lines.join("\n");
+                  navigator.clipboard.writeText(text).catch(() => {});
+                }}
+                className="text-xs text-blue-700 dark:text-blue-300 underline"
+              >
+                Copy
+              </button>
+            </div>
+            <ul className="mt-2 space-y-1 text-sm text-blue-900 dark:text-blue-100">
+              {paymentInstructions.lines.map((line, idx) => (
+                <li key={idx}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Appointment Summary */}
           <div className="lg:col-span-2 space-y-6">
@@ -542,6 +583,7 @@ function AppointmentPaymentContent() {
                   value={paymentMethod}
                   onChange={(e) => {
                     setPaymentMethod(e.target.value);
+                    setPaymentInstructions(null);
                     // Clear errors when changing method
                     setPhoneError("");
                     setAccountError("");
@@ -556,6 +598,7 @@ function AppointmentPaymentContent() {
                   <option value="vodafone_cash">Vodafone Cash</option>
                   <option value="airteltigo">AirtelTigo Money</option>
                   <option value="bank_transfer">Bank Transfer</option>
+                  <option value="ghqr">GHQR</option>
                 </select>
               </div>
 
@@ -653,6 +696,15 @@ function AppointmentPaymentContent() {
                       className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     />
                   </div>
+                </div>
+              )}
+
+              {/* GHQR Info */}
+              {paymentMethod === "ghqr" && (
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    You will receive a GHQR payload after starting payment. Scan it with your banking app to complete the transaction.
+                  </p>
                 </div>
               )}
 

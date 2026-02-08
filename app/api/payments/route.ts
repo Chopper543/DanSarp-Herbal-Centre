@@ -126,6 +126,14 @@ export async function POST(request: NextRequest) {
       card_pin
     } = body;
 
+    const momoMethods = ["mtn_momo", "vodafone_cash", "airteltigo"];
+    if (momoMethods.includes(payment_method) && !phone_number) {
+      return NextResponse.json(
+        { error: "Phone number is required for mobile money payments" },
+        { status: 400 }
+      );
+    }
+
     // If this payment is for appointment booking (booking fee), enforce prerequisites BEFORE charging.
     if (appointment_data) {
       const prereq = await evaluateBookingPrerequisites();
@@ -143,9 +151,8 @@ export async function POST(request: NextRequest) {
 
     // Determine provider based on payment method
     let selectedProvider = provider || "paystack";
-    // Use Paystack for mobile money payments
-    // Only use custom provider for bank_transfer and ghqr
-    if (["bank_transfer", "ghqr"].includes(payment_method)) {
+    const customRailsMethods = ["bank_transfer", "ghqr", "mtn_momo", "vodafone_cash", "airteltigo"];
+    if (customRailsMethods.includes(payment_method)) {
       selectedProvider = "custom";
     }
 

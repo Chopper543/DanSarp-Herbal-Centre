@@ -28,6 +28,12 @@ const recommendedEnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   PAYSTACK_SECRET_KEY: z.string().optional(),
   FLUTTERWAVE_SECRET_KEY: z.string().optional(),
+  GHANA_RAILS_WEBHOOK_SECRET: z.string().optional(),
+  GHANA_RAILS_MERCHANT_MOMO: z.string().optional(),
+  GHANA_RAILS_BANK_ACCOUNT: z.string().optional(),
+  GHANA_RAILS_BANK_NAME: z.string().optional(),
+  GHANA_RAILS_BANK_ACCOUNT_NAME: z.string().optional(),
+  GHANA_RAILS_GHQR_STRING: z.string().optional(),
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: z.string().min(1).optional(),
 });
 
@@ -74,6 +80,12 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
       FLUTTERWAVE_SECRET_KEY: process.env.FLUTTERWAVE_SECRET_KEY,
+      GHANA_RAILS_WEBHOOK_SECRET: process.env.GHANA_RAILS_WEBHOOK_SECRET,
+      GHANA_RAILS_MERCHANT_MOMO: process.env.GHANA_RAILS_MERCHANT_MOMO,
+      GHANA_RAILS_BANK_ACCOUNT: process.env.GHANA_RAILS_BANK_ACCOUNT,
+      GHANA_RAILS_BANK_NAME: process.env.GHANA_RAILS_BANK_NAME,
+      GHANA_RAILS_BANK_ACCOUNT_NAME: process.env.GHANA_RAILS_BANK_ACCOUNT_NAME,
+      GHANA_RAILS_GHQR_STRING: process.env.GHANA_RAILS_GHQR_STRING,
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
     };
 
@@ -95,6 +107,24 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
       warnings.push(
         "No payment provider keys configured - payment functionality will not work"
       );
+    }
+
+    if (!recommended.GHANA_RAILS_WEBHOOK_SECRET) {
+      warnings.push(
+        "GHANA_RAILS_WEBHOOK_SECRET is not set - custom Ghana rails webhooks will be rejected"
+      );
+    }
+
+    if (!recommended.GHANA_RAILS_MERCHANT_MOMO) {
+      warnings.push("GHANA_RAILS_MERCHANT_MOMO is not set - mobile money instructions will be incomplete");
+    }
+
+    if (
+      !recommended.GHANA_RAILS_BANK_ACCOUNT ||
+      !recommended.GHANA_RAILS_BANK_NAME ||
+      !recommended.GHANA_RAILS_BANK_ACCOUNT_NAME
+    ) {
+      warnings.push("Bank transfer details for Ghana rails are incomplete");
     }
 
     // Validate Google Maps API key format if provided

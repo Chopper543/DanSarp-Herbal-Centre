@@ -84,3 +84,51 @@ export async function sendAppointmentConfirmation(
     html,
   });
 }
+
+export async function sendAdminInviteEmail(params: {
+  to: string;
+  inviteLink: string;
+  role: string;
+  invitedBy?: string | null;
+  from?: string;
+}) {
+  const { to, inviteLink, role, invitedBy, from } = params;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #111827; background: #f3f4f6; }
+          .container { max-width: 640px; margin: 0 auto; padding: 24px; }
+          .card { background: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+          .title { color: #0f172a; margin: 0 0 12px 0; }
+          .pill { display: inline-block; padding: 6px 12px; background: #e0f2fe; color: #0369a1; border-radius: 999px; font-size: 12px; font-weight: 600; }
+          .button { display: inline-block; margin-top: 16px; padding: 12px 20px; background: #16a34a; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; }
+          .muted { color: #6b7280; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="card">
+            <p class="pill">Admin invite</p>
+            <h1 class="title">You’ve been invited to DanSarp Herbal Centre</h1>
+            <p>Hello,</p>
+            <p>${invitedBy ? `${invitedBy} has` : "An administrator has"} invited you to join the admin workspace with the <strong>${role.replace("_", " ")}</strong> role.</p>
+            <p>Click the button below to accept the invitation. The link will expire in 7 days.</p>
+            <a class="button" href="${inviteLink}">Accept invitation</a>
+            <p class="muted">If the button doesn’t work, paste this link into your browser:</p>
+            <p class="muted">${inviteLink}</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to,
+    subject: "You’re invited to DanSarp Herbal Centre admin",
+    html,
+    from,
+  });
+}

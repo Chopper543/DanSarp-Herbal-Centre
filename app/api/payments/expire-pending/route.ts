@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { paymentService } from "@/lib/payments/payment-service";
 
 export async function POST(request: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     // Find pending payments older than 1 hour that have a provider_transaction_id
@@ -57,6 +57,84 @@ export async function POST(request: NextRequest) {
           provider_transaction_id: string;
           metadata: any;
         };
+
+        // Custom Ghana rails provider relies on webhook updates.
+        if (typedPayment.provider === "custom") {
+          const providerStatus = typedPayment.metadata?.provider_status;
+
+          if (providerStatus === "completed") {
+            // @ts-ignore - Supabase type inference issue
+            await supabase
+              .from("payments")
+              // @ts-ignore
+              .update({
+                status: "completed",
+                metadata: {
+                  ...(typedPayment.metadata || {}),
+                  completed_at: new Date().toISOString(),
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", typedPayment.id);
+
+            verifiedCount++;
+            results.push({
+              payment_id: typedPayment.id,
+              action: "webhook_completed",
+              provider_status: providerStatus,
+            });
+            continue;
+          }
+
+          if (providerStatus === "failed") {
+            // @ts-ignore - Supabase type inference issue
+            await supabase
+              .from("payments")
+              // @ts-ignore
+              .update({
+                status: "failed",
+                metadata: {
+                  ...(typedPayment.metadata || {}),
+                  failed_at: new Date().toISOString(),
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", typedPayment.id);
+
+            failedCount++;
+            results.push({
+              payment_id: typedPayment.id,
+              action: "webhook_failed",
+              provider_status: providerStatus,
+            });
+            continue;
+          }
+
+          // Still pending after grace period - expire
+          // @ts-ignore - Supabase type inference issue
+          await supabase
+            .from("payments")
+            // @ts-ignore - Supabase type inference issue
+            .update({
+              status: "expired",
+              metadata: {
+                ...(typedPayment.metadata || {}),
+                expired_at: new Date().toISOString(),
+                expiration_reason: "No provider confirmation after 1 hour (custom rails)",
+                last_known_provider_status: providerStatus || "pending",
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", typedPayment.id);
+
+          expiredCount++;
+          results.push({
+            payment_id: typedPayment.id,
+            action: "expired_custom_pending",
+            provider_status: providerStatus || "pending",
+          });
+          continue;
+        }
 
         // Verify with payment provider before marking as expired
         const verification = await paymentService.verifyPayment(

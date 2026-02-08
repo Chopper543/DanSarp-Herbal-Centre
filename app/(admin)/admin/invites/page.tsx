@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mail, Plus, Trash2, Clock, CheckCircle, XCircle, User } from "lucide-react";
+import { Mail, Plus, Trash2, Clock, CheckCircle, XCircle, User, Copy, Check } from "lucide-react";
 import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac-client";
 import { useRouter } from "next/navigation";
 
@@ -30,6 +30,7 @@ export default function AdminInvitesPage() {
   const [formData, setFormData] = useState({ email: "", role: "admin" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -112,6 +113,22 @@ export default function AdminInvitesPage() {
     } catch (error) {
       console.error("Failed to delete invite:", error);
       alert("Failed to delete invite");
+    }
+  };
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
+  const handleCopyLink = async (token: string, id: string) => {
+    const link = `${appUrl}/admin/invite/${token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1200);
+    } catch (err) {
+      console.error("Failed to copy invite link:", err);
     }
   };
 
@@ -342,15 +359,29 @@ export default function AdminInvitesPage() {
                         {new Date(invite.expires_at).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {!invite.accepted_at && (
+                        <div className="flex items-center gap-3">
                           <button
-                            onClick={() => handleDelete(invite.id)}
-                            className="text-red-600 hover:text-red-950 dark:text-red-400 dark:hover:text-red-300"
-                            title="Delete"
+                            onClick={() => handleCopyLink(invite.token, invite.id)}
+                            className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white flex items-center gap-1"
+                            title="Copy invite link"
                           >
-                            <Trash2 className="w-5 h-5" />
+                            {copiedId === invite.id ? (
+                              <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                            <span className="text-xs">{copiedId === invite.id ? "Copied" : "Copy link"}</span>
                           </button>
-                        )}
+                          {!invite.accepted_at && (
+                            <button
+                              onClick={() => handleDelete(invite.id)}
+                              className="text-red-600 hover:text-red-950 dark:text-red-400 dark:hover:text-red-300"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

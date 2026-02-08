@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac";
 import crypto from "crypto";
+import { sendAdminInviteEmail } from "@/lib/email/resend";
 
 export async function GET(request: NextRequest) {
   try {
@@ -132,10 +133,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // TODO: Send invitation email with token
-    // The invite link would be: /admin/invite/accept?token={token}
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const inviteLink = `${appUrl}/admin/invite/${token}`;
 
-    return NextResponse.json({ invite }, { status: 201 });
+    try {
+      await sendAdminInviteEmail({
+        to: email,
+        inviteLink,
+        role,
+        invitedBy: user.email || user.user_metadata?.full_name || null,
+      });
+    } catch (err: any) {
+      console.error("Failed to send admin invite email:", err);
+      return NextResponse.json(
+        { error: "Invite created but email sending failed. Please retry or use the invite link.", invite, invite_link: inviteLink },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ invite, invite_link: inviteLink }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
