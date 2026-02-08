@@ -5,9 +5,29 @@ import { createHmac, randomBytes as nodeRandomBytes } from "crypto";
 // @ts-ignore - base32.js doesn't have type definitions
 import { decode as base32Decode } from "base32.js";
 import QRCode from "qrcode";
+import { encryptSecret } from "@/lib/security/crypto";
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit 2FA generate
+    const identifier = getRateLimitIdentifier(request);
+    const limitResult = await checkRateLimit(identifier, "/api/auth/2fa/generate");
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": limitResult.limit.toString(),
+            "X-RateLimit-Remaining": limitResult.remaining.toString(),
+            "X-RateLimit-Reset": limitResult.reset.toString(),
+            "Retry-After": (limitResult.reset - Math.floor(Date.now() / 1000)).toString(),
+          },
+        }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -64,13 +84,13 @@ export async function POST(request: NextRequest) {
     const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);
 
     // Store the secret temporarily (user needs to verify before enabling)
-    // We'll store it in the database but not enable 2FA yet
+    // We'll store it encrypted in the database but not enable 2FA yet
     // @ts-ignore - Supabase type inference issue
     const { error: updateError } = await supabase
       .from("users")
       // @ts-ignore - Supabase type inference issue
       .update({
-        two_factor_secret: secret,
+        two_factor_secret: encryptSecret(secret),
       })
       .eq("id", user.id);
 

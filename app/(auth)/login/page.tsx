@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { AlertCircle, Shield, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [verifying2FA, setVerifying2FA] = useState(false);
   const [requires2FA, setRequires2FA] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
   const router = useRouter();
   const supabase = createClient();
 
@@ -38,6 +40,7 @@ export default function LoginPage() {
           const profileData = await response.json();
           if (profileData.user?.two_factor_enabled) {
             // User has 2FA enabled, require code
+            document.cookie = "twofa_required=true; path=/; SameSite=Lax; Secure";
             setRequires2FA(true);
             setLoading(false);
             return;
@@ -45,6 +48,7 @@ export default function LoginPage() {
         }
 
         // No 2FA, proceed to dashboard
+        document.cookie = "twofa_verified=true; path=/; SameSite=Lax; Secure; Max-Age=86400";
         router.push("/dashboard");
         router.refresh();
       }
@@ -82,6 +86,8 @@ export default function LoginPage() {
       }
 
       // 2FA verified, proceed to dashboard
+      document.cookie = "twofa_verified=true; path=/; SameSite=Lax; Secure; Max-Age=86400";
+      document.cookie = "twofa_required=; path=/; SameSite=Lax; Secure; Max-Age=0";
       router.push("/dashboard");
       router.refresh();
     } catch (err: any) {
@@ -94,7 +100,10 @@ export default function LoginPage() {
   // Show 2FA verification form if required
   if (requires2FA) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
+      <main
+        className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4"
+        role="main"
+      >
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8">
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full mb-4">
@@ -104,13 +113,26 @@ export default function LoginPage() {
               Two-Factor Authentication
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              Enter the 6-digit code from your authenticator app
+              Enter the 6-digit code from your authenticator app or a backup code
             </p>
           </div>
 
+          {searchParams.get("twofa") === "1" && (
+            <div
+              className="mb-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200 px-4 py-3 rounded-lg text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              Please complete 2FA to continue your session.
+            </div>
+          )}
+
           <form onSubmit={handle2FAVerification} className="space-y-6">
             {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2">
+              <div
+                className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2"
+                role="alert"
+              >
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <span>{error}</span>
               </div>
@@ -121,7 +143,7 @@ export default function LoginPage() {
                 htmlFor="twoFactorCode"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
               >
-                Verification Code
+                Verification Code or Backup Code
               </label>
               <input
                 id="twoFactorCode"
@@ -146,7 +168,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={verifying2FA || twoFactorCode.length !== 6}
-              className="w-full bg-primary-600 hover:bg-primary-950 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-primary-600 hover:bg-primary-950 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               {verifying2FA ? (
                 <>
@@ -165,18 +187,18 @@ export default function LoginPage() {
                 setTwoFactorCode("");
                 setError(null);
               }}
-              className="w-full text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              className="w-full text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded"
             >
               Back to login
             </button>
           </form>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-herbal-100 dark:from-gray-900 dark:to-gray-800 px-4" role="main">
       <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-center mb-2 text-primary-700 dark:text-primary-400">
           Welcome Back
@@ -234,7 +256,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary-600 hover:bg-primary-950 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-primary-600 hover:bg-primary-950 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             {loading ? "Signing in..." : "Sign In"}
           </button>
@@ -251,6 +273,6 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

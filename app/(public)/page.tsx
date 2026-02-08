@@ -9,6 +9,10 @@ import { Calendar, Users, Award, Heart, Star, Shield, CheckCircle, Mail, Chevron
 import Image from "next/image";
 
 export default async function HomePage() {
+  // Revalidate home content periodically to avoid refetching every request
+  // while keeping data reasonably fresh.
+  const revalidate = 600;
+
   const supabase = await createClient();
   
   // Fetch top 4 active treatments
@@ -118,7 +122,7 @@ export default async function HomePage() {
               },
             ].map((item, index) => (
               <ScrollReveal key={index} delay={index * 0.1}>
-                <div className="bg-gray-50 dark:bg-gray-800 p-6 sm:p-8 rounded-2xl hover:shadow-lg transition-shadow text-center">
+                <div className="bg-gray-50 dark:bg-gray-800 p-6 sm:p-8 rounded-2xl hover:shadow-lg transition-shadow text-center h-full flex flex-col">
                   <item.Icon className="w-12 h-12 mx-auto mb-4 text-primary-600 dark:text-primary-400" />
                   <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
                     {item.title}
@@ -126,6 +130,7 @@ export default async function HomePage() {
                   <p className="text-gray-600 dark:text-gray-400 text-sm">
                     {item.description}
                   </p>
+                  <span aria-hidden className="mt-auto" />
                 </div>
               </ScrollReveal>
             ))}
@@ -149,7 +154,7 @@ export default async function HomePage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {typedTreatments.map((treatment, index) => (
                 <ScrollReveal key={treatment.id} delay={index * 0.1}>
-                  <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
+                  <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700 h-full flex flex-col">
                     <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-white">
                       {treatment.name}
                     </h3>
@@ -158,7 +163,7 @@ export default async function HomePage() {
                     </p>
                     <Link 
                       href={`/treatments#${treatment.slug}`}
-                      className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium text-sm inline-flex items-center gap-1"
+                      className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium text-sm inline-flex items-center gap-1 mt-auto"
                     >
                       Learn More →
                     </Link>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getUserRole, isClinicalStaff, isSuperAdmin } from "@/lib/auth/rbac-client";
 import { canAccessSection } from "@/lib/auth/role-capabilities";
@@ -40,8 +40,9 @@ export default function AdminLayout({
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [superAdminMenuOpen, setSuperAdminMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     async function checkAuth() {
@@ -84,19 +85,37 @@ export default function AdminLayout({
     canAccessSection(userRole, item.section)
   );
   const isUserSuperAdmin = userRole && isSuperAdmin(userRole);
-  const superAdminOnlySections: AdminSection[] = [
+  const superAdminSections: AdminSection[] = [
     "admins",
     "invites",
     "audit_logs",
     "database",
     "system",
   ];
-  const mainNavItems = navItems.filter(
-    (item) => !superAdminOnlySections.includes(item.section)
+  const primarySections: AdminSection[] = ["dashboard", "appointments", "users"];
+
+  const primaryNavItems = navItems.filter((item) =>
+    primarySections.includes(item.section)
   );
-  const superAdminItems = navItems.filter((item) =>
-    superAdminOnlySections.includes(item.section)
+  const moreNavItems = navItems.filter(
+    (item) => !primarySections.includes(item.section)
   );
+  const generalMoreItems = moreNavItems.filter(
+    (item) => !superAdminSections.includes(item.section)
+  );
+  const superAdminMoreItems = moreNavItems.filter((item) =>
+    superAdminSections.includes(item.section)
+  );
+
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
+  const desktopLinkBase =
+    "group relative px-3 py-2 text-sm font-medium rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2";
+  const desktopLinkHover =
+    "text-gray-700 dark:text-gray-300 hover:text-primary-700 dark:hover:text-primary-200 hover:bg-gray-100/70 dark:hover:bg-gray-800/70";
+  const desktopLinkActive =
+    "text-primary-700 dark:text-primary-100 bg-primary-50 dark:bg-primary-900/30 shadow-inner";
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -117,44 +136,93 @@ export default function AdminLayout({
               </div>
               
               {/* Desktop Navigation */}
-              <div className="hidden lg:flex items-center space-x-4">
-                {mainNavItems.map((item) => (
+              <div className="hidden lg:flex items-center space-x-3">
+                {primaryNavItems.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="text-sm text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors whitespace-nowrap"
+                    className={`${desktopLinkBase} ${
+                      isActive(item.href) ? desktopLinkActive : desktopLinkHover
+                    }`}
                   >
-                    {item.label}
+                    <span className="relative inline-flex flex-col items-center gap-0.5">
+                      <span>{item.label}</span>
+                      <span
+                        className={`block h-0.5 w-full rounded-full bg-primary-600 dark:bg-primary-200 transition-transform duration-200 origin-center ${
+                          isActive(item.href)
+                            ? "scale-x-100"
+                            : "scale-x-0 group-hover:scale-x-100"
+                        }`}
+                      />
+                    </span>
                   </Link>
                 ))}
                 
-                {/* Super Admin Dropdown */}
-                {isUserSuperAdmin && (
+                {/* More Dropdown */}
+                {moreNavItems.length > 0 && (
                   <div className="relative">
                     <button
-                      onClick={() => setSuperAdminMenuOpen(!superAdminMenuOpen)}
-                      className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                      className={`${desktopLinkBase} ${desktopLinkHover} flex items-center gap-1`}
                     >
-                      <span>More</span>
-                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${superAdminMenuOpen ? 'rotate-180' : ''}`} />
+                      <span className="relative inline-flex flex-col items-center gap-0.5">
+                        <span>More</span>
+                        <span
+                          className={`block h-0.5 w-full rounded-full bg-primary-600 dark:bg-primary-200 transition-transform duration-200 origin-center ${
+                            moreMenuOpen
+                              ? "scale-x-100"
+                              : "scale-x-0 group-hover:scale-x-100"
+                          }`}
+                        />
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform duration-200 ${
+                          moreMenuOpen ? "rotate-180" : ""
+                        }`}
+                      />
                     </button>
-                    {superAdminMenuOpen && (
+                    {moreMenuOpen && (
                       <>
                         <div 
                           className="fixed inset-0 z-10" 
-                          onClick={() => setSuperAdminMenuOpen(false)}
+                          onClick={() => setMoreMenuOpen(false)}
                         />
-                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-20">
-                          {superAdminItems.map((item) => (
+                        <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-20">
+                          {generalMoreItems.map((item) => (
                             <Link
                               key={item.href}
                               href={item.href}
-                              onClick={() => setSuperAdminMenuOpen(false)}
-                              className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                              onClick={() => setMoreMenuOpen(false)}
+                              className={`block px-4 py-2 text-sm rounded-md transition-colors ${
+                                isActive(item.href)
+                                  ? "text-primary-700 dark:text-primary-100 bg-primary-50 dark:bg-primary-900/30"
+                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                              }`}
                             >
                               {item.label}
                             </Link>
                           ))}
+                          {superAdminMoreItems.length > 0 && (
+                            <>
+                              <div className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                Super Admin
+                              </div>
+                              {superAdminMoreItems.map((item) => (
+                                <Link
+                                  key={item.href}
+                                  href={item.href}
+                                  onClick={() => setMoreMenuOpen(false)}
+                                  className={`block px-4 py-2 text-sm rounded-md transition-colors ${
+                                    isActive(item.href)
+                                      ? "text-primary-700 dark:text-primary-100 bg-primary-50 dark:bg-primary-900/30"
+                                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  }`}
+                                >
+                                  {item.label}
+                                </Link>
+                              ))}
+                            </>
+                          )}
                         </div>
                       </>
                     )}
@@ -187,31 +255,60 @@ export default function AdminLayout({
           {mobileMenuOpen && (
             <div className="lg:hidden border-t border-gray-200 dark:border-gray-700 py-4 max-h-[calc(100vh-5rem)] overflow-y-auto">
               <div className="space-y-1">
-                {mainNavItems.map((item) => (
+                {primaryNavItems.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    className={`block px-4 py-2 text-sm rounded-lg transition-colors ${
+                      isActive(item.href)
+                        ? "text-primary-700 dark:text-primary-100 bg-primary-50 dark:bg-primary-900/30"
+                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`}
                   >
                     {item.label}
                   </Link>
                 ))}
-                {isUserSuperAdmin && (
+                {moreNavItems.length > 0 && (
                   <>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Super Admin
+                      More
                     </div>
-                    {superAdminItems.map((item) => (
+                    {generalMoreItems.map((item) => (
                       <Link
                         key={item.href}
                         href={item.href}
                         onClick={() => setMobileMenuOpen(false)}
-                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors pl-8"
+                        className={`block px-4 py-2 text-sm rounded-lg transition-colors ${
+                          isActive(item.href)
+                            ? "text-primary-700 dark:text-primary-100 bg-primary-50 dark:bg-primary-900/30"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
                       >
                         {item.label}
                       </Link>
                     ))}
+                    {superAdminMoreItems.length > 0 && (
+                      <>
+                        <div className="px-4 pt-1 pb-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Super Admin
+                        </div>
+                        {superAdminMoreItems.map((item) => (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={`block px-4 py-2 text-sm rounded-lg transition-colors ${
+                              isActive(item.href)
+                                ? "text-primary-700 dark:text-primary-100 bg-primary-50 dark:bg-primary-900/30"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            }`}
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </>
+                    )}
                   </>
                 )}
                 <Link

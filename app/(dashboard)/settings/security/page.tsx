@@ -30,6 +30,7 @@ export default function SecuritySettingsPage() {
   const [disableCode, setDisableCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [legacyCodesNotice, setLegacyCodesNotice] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -50,6 +51,19 @@ export default function SecuritySettingsPage() {
           const data = await response.json();
           setUser(data.user);
           setTwoFactorEnabled(data.user?.two_factor_enabled || false);
+
+          // Detect legacy/plain backup codes: if enabled and codes exist, but any are not hashed (length <= 16 or non-hex)
+          const codes = data.user?.two_factor_backup_codes as string[] | undefined;
+          if (
+            data.user?.two_factor_enabled &&
+            Array.isArray(codes) &&
+            codes.length > 0 &&
+            codes.some((c: string) => c.length <= 16 || !/^[a-fA-F0-9]{32,}$/.test(c))
+          ) {
+            setLegacyCodesNotice(
+              "Your backup codes were created before the latest security update. Please regenerate backup codes to ensure they are secured."
+            );
+          }
         }
       } catch (error) {
         console.error("Failed to fetch user data:", error);
@@ -183,20 +197,20 @@ export default function SecuritySettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <main className="min-h-screen flex items-center justify-center" role="main">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8" role="main">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <Link
             href="/dashboard"
-            className="inline-flex items-center text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 mb-4 transition-colors"
+            className="inline-flex items-center text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 mb-4 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 rounded"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
@@ -214,24 +228,49 @@ export default function SecuritySettingsPage() {
 
         {/* Alerts */}
         {error && (
-          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2">
+          <div
+            className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-2"
+            role="alert"
+          >
             <AlertTriangle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg flex items-start gap-2">
+          <div
+            className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg flex items-start gap-2"
+            role="status"
+            aria-live="polite"
+          >
             <CheckCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <span>{success}</span>
           </div>
         )}
 
+        {legacyCodesNotice && (
+          <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded-lg flex items-start gap-2">
+            <AlertTriangle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium">Action recommended</p>
+              <p className="text-sm">{legacyCodesNotice}</p>
+              <button
+                onClick={handleGenerateSecret}
+                className="inline-flex items-center gap-2 px-3 py-2 mt-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={generating}
+              >
+                {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Regenerate 2FA & backup codes
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 2FA Status Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 mb-6" role="region" aria-labelledby="two-fa-heading">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
+                <h2 id="two-fa-heading" className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
                 Two-Factor Authentication
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -264,7 +303,7 @@ export default function SecuritySettingsPage() {
                 <button
                   onClick={handleGenerateSecret}
                   disabled={generating}
-                  className="w-full sm:w-auto px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   {generating ? (
                     <>
@@ -324,7 +363,7 @@ export default function SecuritySettingsPage() {
                     <button
                       type="submit"
                       disabled={verifying || verificationCode.length !== 6}
-                      className="w-full px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
                       {verifying ? (
                         <>
@@ -342,7 +381,7 @@ export default function SecuritySettingsPage() {
                         setSecret(null);
                         setVerificationCode("");
                       }}
-                      className="w-full px-6 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+                      className="w-full px-6 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
                       Cancel
                     </button>
@@ -393,7 +432,7 @@ export default function SecuritySettingsPage() {
                 <button
                   type="submit"
                   disabled={disabling}
-                  className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   {disabling ? (
                     <>
@@ -437,21 +476,21 @@ export default function SecuritySettingsPage() {
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={copyBackupCodes}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <Copy className="w-4 h-4" />
                 Copy Codes
               </button>
               <button
                 onClick={downloadBackupCodes}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <Download className="w-4 h-4" />
                 Download
               </button>
               <button
                 onClick={() => setShowBackupCodes(false)}
-                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 I've Saved These Codes
               </button>
@@ -484,6 +523,6 @@ export default function SecuritySettingsPage() {
           </ul>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

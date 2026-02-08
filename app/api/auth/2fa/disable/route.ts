@@ -4,9 +4,29 @@ import { TOTP } from "otplib";
 import { createHmac } from "crypto";
 // @ts-ignore - base32.js doesn't have type definitions
 import { decode as base32Decode } from "base32.js";
+import { decryptSecret, hashBackupCode } from "@/lib/security/crypto";
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit 2FA disable
+    const identifier = getRateLimitIdentifier(request);
+    const limitResult = await checkRateLimit(identifier, "/api/auth/2fa/disable");
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": limitResult.limit.toString(),
+            "X-RateLimit-Remaining": limitResult.remaining.toString(),
+            "X-RateLimit-Reset": limitResult.reset.toString(),
+            "Retry-After": (limitResult.reset - Math.floor(Date.now() / 1000)).toString(),
+          },
+        }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -33,7 +53,7 @@ export async function POST(request: NextRequest) {
       if (typedUserData?.two_factor_secret) {
         // @ts-ignore - otplib v13 requires crypto plugin configuration
         const totp = new TOTP({
-          secret: typedUserData.two_factor_secret,
+          secret: decryptSecret(typedUserData.two_factor_secret),
           // @ts-ignore
           createDigest: (algorithm: string, secret: string) => {
             const secretBuffer = Buffer.from(base32Decode(secret));
@@ -44,7 +64,7 @@ export async function POST(request: NextRequest) {
         const isValid = await totp.verify(code);
 
         // Also check backup codes
-        const isBackupCode = typedUserData.two_factor_backup_codes?.includes(code.toUpperCase());
+        const isBackupCode = typedUserData.two_factor_backup_codes?.includes(hashBackupCode(code));
 
         if (!isValid && !isBackupCode) {
           return NextResponse.json(
@@ -56,7 +76,7 @@ export async function POST(request: NextRequest) {
         // If backup code was used, remove it from the list
         if (isBackupCode && typedUserData.two_factor_backup_codes) {
           const updatedBackupCodes = typedUserData.two_factor_backup_codes.filter(
-            (c: string) => c !== code.toUpperCase()
+            (c: string) => c !== hashBackupCode(code)
           );
           
           // @ts-ignore - Supabase type inference issue
@@ -92,10 +112,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "2FA has been successfully disabled",
     });
+
+    // Clear 2FA cookies
+    response.cookies.set("twofa_verified", "", {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      secure: true,
+      maxAge: 0,
+    });
+    response.cookies.set("twofa_required", "", {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      secure: true,
+      maxAge: 0,
+    });
+
+    return response;
   } catch (error: any) {
     console.error("Error disabling 2FA:", error);
     return NextResponse.json(

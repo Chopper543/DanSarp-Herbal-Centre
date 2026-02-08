@@ -10,9 +10,9 @@ export default function AdminAppointmentsPage() {
 
   useEffect(() => {
     async function fetchAppointments() {
-      const { data } = await fetch("/api/appointments?admin=true").then((res) => res.json());
-      if (data?.appointments) {
-        setAppointments(data.appointments);
+      const { appointments } = await fetch("/api/appointments?admin=true").then((res) => res.json());
+      if (appointments) {
+        setAppointments(appointments);
       }
       setLoading(false);
     }
@@ -61,6 +61,9 @@ export default function AdminAppointmentsPage() {
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                Payment
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                 Actions
               </th>
             </tr>
@@ -89,6 +92,17 @@ export default function AdminAppointmentsPage() {
                   >
                     {appointment.status}
                   </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {appointment.paid ? (
+                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                      PAID
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                      Unpaid
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <select

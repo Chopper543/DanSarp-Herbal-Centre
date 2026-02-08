@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { MessageSquare, Send, Plus, Mail, MailOpen } from "lucide-react";
+import { MessageSquare, Send, Plus, Mail, MailOpen, CheckCircle, XCircle } from "lucide-react";
 import { format } from "date-fns";
 
 export default function MessagesPage() {
@@ -13,26 +13,48 @@ export default function MessagesPage() {
   const [showCompose, setShowCompose] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const composeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const composeDialogRef = useRef<HTMLDivElement | null>(null);
+  const firstFieldRef = useRef<HTMLSelectElement | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
+  const closeCompose = () => {
+    setShowCompose(false);
+    setComposeForm({ department: "care_team", subject: "", content: "", appointment_id: "" });
+    requestAnimationFrame(() => {
+      composeTriggerRef.current?.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (showCompose) {
+      firstFieldRef.current?.focus();
+    }
+  }, [showCompose]);
+
   const [composeForm, setComposeForm] = useState({
-    recipient_email: "",
+    department: "care_team",
     subject: "",
     content: "",
     appointment_id: "",
   });
 
   useEffect(() => {
-    fetchMessages();
-  }, [type]);
+    fetchMessages(page);
+  }, [type, page]);
 
-  async function fetchMessages() {
+  async function fetchMessages(nextPage = 1) {
     try {
-      const response = await fetch(`/api/messages?type=${type}`);
+      const response = await fetch(`/api/messages?type=${type}&page=${nextPage}&limit=${limit}`);
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
+        setTotalPages(data.pagination?.totalPages || 1);
       }
     } catch (error) {
       console.error("Failed to fetch messages:", error);
@@ -44,29 +66,14 @@ export default function MessagesPage() {
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     setSending(true);
+    setToast(null);
 
     try {
-      // First, get recipient user ID from email
-      // @ts-ignore - Supabase type inference issue with users table
-      const { data: recipient } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", composeForm.recipient_email)
-        .single();
-
-      const typedRecipient = recipient as { id: string } | null;
-
-      if (!typedRecipient) {
-        alert("User not found with that email");
-        setSending(false);
-        return;
-      }
-
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recipient_id: typedRecipient.id,
+          department: composeForm.department,
           subject: composeForm.subject,
           content: composeForm.content,
           appointment_id: composeForm.appointment_id || null,
@@ -75,17 +82,18 @@ export default function MessagesPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        // Show user-friendly error message
-        alert(data.error || "Failed to send message");
+        setToast({ type: "error", message: data.error || "Failed to send message" });
         setSending(false);
         return;
       }
 
       setShowCompose(false);
-      setComposeForm({ recipient_email: "", subject: "", content: "", appointment_id: "" });
+      setComposeForm({ department: "care_team", subject: "", content: "", appointment_id: "" });
+      setToast({ type: "success", message: "Message sent successfully" });
       fetchMessages();
+      requestAnimationFrame(() => composeTriggerRef.current?.focus());
     } catch (error: any) {
-      alert(error.message || "An error occurred while sending the message");
+      setToast({ type: "error", message: error.message || "An error occurred while sending the message" });
     } finally {
       setSending(false);
     }
@@ -116,12 +124,13 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8" role="main">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Messages</h1>
           <button
             onClick={() => setShowCompose(true)}
+            ref={composeTriggerRef}
             className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-950 text-white rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -131,26 +140,60 @@ export default function MessagesPage() {
 
         {/* Compose Modal */}
         {showCompose && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patient-compose-heading"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                closeCompose();
+              }
+              if (e.key === "Tab" && composeDialogRef.current) {
+                const focusable = composeDialogRef.current.querySelectorAll<HTMLElement>(
+                  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (e.shiftKey && document.activeElement === first) {
+                  e.preventDefault();
+                  last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                  e.preventDefault();
+                  first.focus();
+                }
+              }
+            }}
+          >
+            <div
+              ref={composeDialogRef}
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6"
+            >
+              <h2 id="patient-compose-heading" className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
                 Compose Message
               </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                Patients can message staff only. Choose a department to reach the right team.
+              </p>
               <form onSubmit={handleSendMessage} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    To (Email)
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2" htmlFor="compose-department">
+                    Department
                   </label>
-                  <input
-                    type="email"
-                    value={composeForm.recipient_email}
+                  <select
+                    id="compose-department"
+                    ref={firstFieldRef}
+                    value={composeForm.department}
                     onChange={(e) =>
-                      setComposeForm({ ...composeForm, recipient_email: e.target.value })
+                      setComposeForm({ ...composeForm, department: e.target.value })
                     }
                     required
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
-                    placeholder="recipient@example.com"
-                  />
+                  >
+                    <option value="care_team">Care Team</option>
+                    <option value="billing">Billing</option>
+                    <option value="admin">Admin</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -190,10 +233,7 @@ export default function MessagesPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowCompose(false);
-                      setComposeForm({ recipient_email: "", subject: "", content: "", appointment_id: "" });
-                    }}
+                    onClick={closeCompose}
                     className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg"
                   >
                     Cancel
@@ -204,11 +244,58 @@ export default function MessagesPage() {
           </div>
         )}
 
+        {toast && (
+          <div
+            className={`mt-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
+              toast.type === "success"
+                ? "bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200 border border-green-200 dark:border-green-800"
+                : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200 border border-red-200 dark:border-red-800"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {toast.type === "success" ? (
+              <CheckCircle className="w-4 h-4" aria-hidden />
+            ) : (
+              <XCircle className="w-4 h-4" aria-hidden />
+            )}
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-auto text-xs underline text-current focus:outline-none focus:ring-2 focus:ring-primary-500 rounded"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Pagination */}
+        <div className="mt-6 flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+
         {/* Tabs */}
         <div className="flex gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">
           <button
             onClick={() => {
               setType("inbox");
+              setPage(1);
               setSelectedMessage(null);
             }}
             className={`px-4 py-2 font-medium border-b-2 transition-colors ${
@@ -222,6 +309,7 @@ export default function MessagesPage() {
           <button
             onClick={() => {
               setType("sent");
+              setPage(1);
               setSelectedMessage(null);
             }}
             className={`px-4 py-2 font-medium border-b-2 transition-colors ${
@@ -328,6 +416,6 @@ export default function MessagesPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

@@ -2,9 +2,79 @@ import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 import { getSecurityHeaders } from "@/lib/security/csp";
+import { createClient } from "@/lib/supabase/server";
+
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth/2fa/generate",
+  "/api/auth/2fa/verify",
+  "/api/auth/2fa/verify-login",
+  "/api/auth/2fa/disable",
+  "/api/health",
+  "/_next",
+  "/favicon.ico",
+  "/assets",
+];
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const twofaRequired = request.cookies.get("twofa_required")?.value === "true";
+  const twofaVerified = request.cookies.get("twofa_verified")?.value === "true";
+
+  // Enforce 2FA for all authenticated routes (except public)
+  if (!isPublicPath(pathname)) {
+    // Server-side check: if user has 2FA enabled but not verified, block
+    try {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        // @ts-ignore - Supabase type inference issue
+        const { data: userData } = await supabase
+          .from("users")
+          .select("two_factor_enabled")
+          .eq("id", user.id)
+          .single();
+
+        const requires2fa = userData?.two_factor_enabled === true;
+
+        if (requires2fa && !twofaVerified) {
+          if (pathname.startsWith("/api/")) {
+            return NextResponse.json(
+              { error: "Two-factor authentication required" },
+              { status: 401 }
+            );
+          }
+          const url = request.nextUrl.clone();
+          url.pathname = "/login";
+          url.searchParams.set("twofa", "1");
+          return NextResponse.redirect(url);
+        }
+      }
+    } catch (error) {
+      // Fail-safe: if we can't verify, let the existing cookie check run
+    }
+  }
+
+  if (!isPublicPath(pathname) && twofaRequired && !twofaVerified) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Two-factor authentication required" },
+        { status: 401 }
+      );
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("twofa", "1");
+    return NextResponse.redirect(url);
+  }
 
   // Apply rate limiting to API routes
   if (pathname.startsWith("/api/")) {

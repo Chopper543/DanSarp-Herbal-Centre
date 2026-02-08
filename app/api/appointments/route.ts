@@ -220,7 +220,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ appointments }, { status: 200 });
+    // For admin, annotate each appointment with paid flag (completed payment with matching appointment_id)
+    let annotatedAppointments = appointments;
+    if (isAdmin && appointments && appointments.length > 0) {
+      const appointmentIds = appointments.map((apt: any) => apt.id);
+      // @ts-ignore - Supabase type inference issue with payments table
+      const { data: paidPayments } = await supabase
+        .from("payments")
+        .select("appointment_id, status")
+        .in("appointment_id", appointmentIds)
+        .eq("status", "completed");
+
+      const paidSet = new Set((paidPayments || []).map((p: any) => p.appointment_id));
+      annotatedAppointments = appointments.map((apt: any) => ({
+        ...apt,
+        paid: paidSet.has(apt.id),
+      }));
+    }
+
+    return NextResponse.json({ appointments: annotatedAppointments }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -75,6 +75,8 @@ Generate 2FA QR code for user.
 
 **Requires**: Authentication
 
+**Env required**: `TWO_FA_ENC_KEY` (≥32 chars) for encrypting TOTP secrets and hashing backup codes.
+
 **Response:**
 ```json
 {
@@ -90,7 +92,7 @@ Verify 2FA setup.
 **Body:**
 ```json
 {
-  "token": "123456"
+  "code": "123456"
 }
 ```
 
@@ -101,8 +103,7 @@ Verify 2FA during login.
 **Body:**
 ```json
 {
-  "userId": "user_id",
-  "token": "123456"
+  "code": "123456"
 }
 ```
 

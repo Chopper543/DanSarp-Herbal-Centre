@@ -30,11 +30,11 @@ export async function GET(request: NextRequest) {
       userId = user.id;
     }
 
-    // Fetch user data
+    // Fetch user data with only needed fields
     // @ts-ignore - Supabase type inference issue with users table
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("*")
+      .select("id, email, full_name, role, two_factor_enabled, two_factor_backup_codes")
       .eq("id", userId)
       .single();
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     // Fetch profile data
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, bio, avatar_url, created_at, updated_at")
       .eq("id", userId)
       .single();
 

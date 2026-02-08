@@ -1,43 +1,72 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import { getUserRole } from "@/lib/auth/rbac-client";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
+import { UserRole } from "@/types";
+import { Shield } from "lucide-react";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
-    async function fetchUsers() {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (data) {
-        setUsers(data);
+    async function init() {
+      const role = await getUserRole();
+      setUserRole(role);
+      if (!canAccessSection(role, "users")) {
+        setLoading(false);
+        return;
+      }
+      const res = await fetch("/api/admin/users");
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users ?? []);
       }
       setLoading(false);
     }
-
-    fetchUsers();
+    init();
   }, []);
 
-  const updateRole = async (id: string, role: string) => {
-    const { error } = await supabase
-      .from("users")
-      // @ts-ignore - Supabase type inference issue with users table
-      .update({ role })
-      .eq("id", id);
-
-    if (!error) {
-      setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, role } : user)));
+  const updateRole = async (id: string, newRole: string) => {
+    const res = await fetch("/api/admin/admins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: id, newRole }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.user) setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: data.user.role } : u)));
+    } else {
+      const err = await res.json();
+      alert(err.error || "Failed to update role");
     }
   };
 
   if (loading) {
     return <div>Loading users...</div>;
+  }
+
+  if (!userRole || !canAccessSection(userRole, "users")) {
+    return (
+      <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6 text-center">
+        <Shield className="w-12 h-12 text-amber-600 dark:text-amber-400 mx-auto mb-3" />
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          Access restricted
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          You do not have permission to view or manage users. Contact an Admin or Super Admin if you need access.
+        </p>
+        <Link
+          href="/admin"
+          className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors"
+        >
+          Back to Admin Dashboard
+        </Link>
+      </div>
+    );
   }
 
   return (

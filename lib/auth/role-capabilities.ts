@@ -69,7 +69,7 @@ const CAPABILITIES: Record<UserRole, AdminSection[]> = {
     "messages",
     "intake_forms",
   ],
-  finance_manager: ["dashboard", "payments", "users"],
+  finance_manager: ["dashboard", "payments"],
   doctor: [
     "dashboard",
     "appointments",
