@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { logAuditEvent } from "@/lib/audit/log";
 
 export async function GET(request: NextRequest) {
   try {
@@ -148,6 +149,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    await logAuditEvent({
+      userId: user.id,
+      action: "create_patient_record",
+      resourceType: "patient_record",
+      resourceId: (record as any)?.id,
+      metadata: {
+        target_user_id: targetUserId,
+      },
+    });
+
     return NextResponse.json({ record }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -217,6 +228,16 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    await logAuditEvent({
+      userId: user.id,
+      action: "update_patient_record",
+      resourceType: "patient_record",
+      resourceId: (record as any)?.id,
+      metadata: {
+        target_user_id: targetUserId,
+      },
+    });
+
     return NextResponse.json({ record }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -258,6 +279,13 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "delete_patient_record",
+      resourceType: "patient_record",
+      resourceId: userId,
+    });
 
     return NextResponse.json({ message: "Patient record deleted successfully" }, { status: 200 });
   } catch (error: any) {

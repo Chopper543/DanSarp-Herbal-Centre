@@ -1,37 +1,20 @@
-/**
- * Appointment Reminder Service
- * Handles scheduling and sending appointment reminders
- */
-
 import { createClient } from "@/lib/supabase/server";
-import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
-import { sendAppointmentConfirmation } from "@/lib/email/resend";
+import { enqueueReminderJob } from "@/lib/queue/reminders";
+import { dispatchReminder, ReminderPreferences } from "@/lib/notifications/reminder-dispatch";
 
-export interface ReminderPreferences {
-  email: boolean;
-  sms: boolean;
-  whatsapp: boolean;
-  reminderTiming: number[]; // Hours before appointment (e.g., [24, 48, 168] for 1 day, 2 days, 1 week)
-}
-
-export async function sendAppointmentReminders(
+/**
+ * Schedules appointment reminders via BullMQ with delay. Falls back to
+ * immediate dispatch if queue configuration is missing or enqueue fails.
+ */
+export async function scheduleAppointmentReminders(
   appointmentId: string,
   preferences: ReminderPreferences
 ): Promise<void> {
   const supabase = await createClient();
-
-  // @ts-ignore
+  // Fetch minimal appointment data to compute schedule windows
   const { data: appointment, error } = await supabase
     .from("appointments")
-    .select(`
-      *,
-      user:users!appointments_user_id_fkey (
-        id,
-        email,
-        phone,
-        full_name
-      )
-    `)
+    .select("id, appointment_date")
     .eq("id", appointmentId)
     .single();
 
@@ -39,50 +22,35 @@ export async function sendAppointmentReminders(
     throw new Error("Appointment not found");
   }
 
-  const typedAppointment = appointment as any;
-  const user = typedAppointment.user as any;
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const appointmentDate = new Date(typedAppointment.appointment_date);
+  const appointmentDate = new Date((appointment as any).appointment_date);
   const now = new Date();
 
   for (const hoursBefore of preferences.reminderTiming) {
     const reminderTime = new Date(appointmentDate.getTime() - hoursBefore * 60 * 60 * 1000);
-
-    if (reminderTime > now) {
-      // Schedule reminder (in a real implementation, you'd use a job queue)
-      // For now, we'll just send immediately if it's time
-      if (reminderTime <= new Date(now.getTime() + 60000)) {
-        // Within 1 minute of reminder time
-        await sendReminder(typedAppointment, user, preferences);
-      }
+    if (reminderTime <= now) {
+      // Skip reminders that would trigger in the past
+      continue;
     }
-  }
-}
 
-async function sendReminder(
-  appointment: any,
-  user: any,
-  preferences: ReminderPreferences
-): Promise<void> {
-  if (preferences.email && user.email) {
-    const apptDate = new Date(appointment.appointment_date);
-    await sendAppointmentConfirmation(user.email, {
-      date: apptDate.toLocaleDateString(),
-      time: apptDate.toLocaleTimeString(),
-      treatment: appointment.treatment_type,
-      branch: "Main Branch",
-    });
-  }
+    const delayMs = reminderTime.getTime() - now.getTime();
+    // If the reminder is due in the next minute, send immediately
+    if (delayMs <= 60_000) {
+      await dispatchReminder(appointmentId, preferences);
+      continue;
+    }
 
-  if (preferences.whatsapp && user.phone) {
-    const apptDate = new Date(appointment.appointment_date);
-    await sendAppointmentReminder(user.phone, {
-      date: apptDate.toLocaleDateString(),
-      time: apptDate.toLocaleTimeString(),
-      treatment: appointment.treatment_type,
-    });
+    try {
+      await enqueueReminderJob(
+        {
+          appointmentId,
+          preferences,
+          triggerAt: reminderTime.toISOString(),
+        },
+        delayMs
+      );
+    } catch (err) {
+      // Queue is unavailable or misconfigured; fallback to direct send to avoid losing reminder
+      await dispatchReminder(appointmentId, preferences);
+    }
   }
 }

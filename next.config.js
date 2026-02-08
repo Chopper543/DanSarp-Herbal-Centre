@@ -1,3 +1,9 @@
+const { validateEnvOrThrowRuntime } = require("./scripts/runtime-env-validation");
+const { withSentryConfig } = require("@sentry/nextjs");
+
+// Fail fast on missing env vars (strict in production)
+validateEnvOrThrowRuntime();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Production optimizations
@@ -36,6 +42,10 @@ const nextConfig = {
 
   // Note: Environment variable validation should be run manually before build
   // Use: npm run validate:env:strict
-}
+};
 
-module.exports = nextConfig
+const shouldEnableSentry = !!process.env.NEXT_PUBLIC_SENTRY_DSN;
+
+module.exports = shouldEnableSentry
+  ? withSentryConfig(nextConfig, { silent: true })
+  : nextConfig;

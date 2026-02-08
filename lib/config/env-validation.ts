@@ -99,6 +99,14 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
       );
     }
 
+    if (!process.env.BULLMQ_REDIS_URL && !process.env.UPSTASH_REDIS_URL && !process.env.REDIS_URL) {
+      warnings.push("BullMQ Redis is not configured - background reminders/notifications queue will be disabled");
+    }
+
+    if (!process.env.CRON_SECRET) {
+      warnings.push("CRON_SECRET is not set - cron endpoints cannot be secured");
+    }
+
     if (!recommended.RESEND_API_KEY) {
       warnings.push("RESEND_API_KEY is not set - email functionality will not work");
     }

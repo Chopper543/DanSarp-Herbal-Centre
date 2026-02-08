@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
-import { sendAppointmentConfirmation } from "@/lib/email/resend";
+import { scheduleAppointmentReminders } from "@/lib/notifications/reminder-service";
 
 /**
  * Vercel Cron endpoint for sending appointment reminders
@@ -15,6 +14,9 @@ import { sendAppointmentConfirmation } from "@/lib/email/resend";
  */
 export async function GET(request: NextRequest) {
   // Verify this is a cron request (optional: add authentication)
+  if (!process.env.CRON_SECRET) {
+    return NextResponse.json({ error: "Cron secret not configured" }, { status: 500 });
+  }
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -73,30 +75,12 @@ export async function GET(request: NextRequest) {
     if (appointments24h) {
       for (const appointment of appointments24h as unknown as AppointmentWithUser[]) {
         try {
-          const user = appointment.user;
-          if (!user) continue;
-
-          // Send email reminder
-          if (user.email) {
-            const apptDate = new Date(appointment.appointment_date);
-            await sendAppointmentConfirmation(user.email, {
-              date: apptDate.toLocaleDateString(),
-              time: apptDate.toLocaleTimeString(),
-              treatment: appointment.treatment_type,
-              branch: "Main Branch",
-            });
-          }
-
-          // Send WhatsApp reminder
-          if (user.phone) {
-            const apptDate = new Date(appointment.appointment_date);
-            await sendAppointmentReminder(user.phone, {
-              date: apptDate.toLocaleDateString(),
-              time: apptDate.toLocaleTimeString(),
-              treatment: appointment.treatment_type,
-            });
-          }
-
+          await scheduleAppointmentReminders(appointment.id, {
+            email: true,
+            sms: false,
+            whatsapp: true,
+            reminderTiming: [24],
+          });
           results.sent++;
         } catch (error: any) {
           results.failed++;

@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/rbac";
-import { UserRole } from "@/types";
+import { z } from "zod";
+
+const UpdateRoleSchema = z.object({
+  userId: z.string().uuid(),
+  newRole: z.enum([
+    "super_admin",
+    "admin",
+    "content_manager",
+    "appointment_manager",
+    "finance_manager",
+    "doctor",
+    "nurse",
+    "user",
+  ]),
+});
 
 // GET - List all admin users
 export async function GET(request: NextRequest) {
@@ -41,28 +55,20 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(["super_admin"]);
     const supabase = await createClient();
     const body = await request.json();
-    const { userId, newRole } = body;
+    const parsed = UpdateRoleSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+    const { userId, newRole } = parsed.data;
 
     if (!userId || !newRole) {
       return NextResponse.json(
         { error: "userId and newRole are required" },
         { status: 400 }
       );
-    }
-
-    // Validate role
-    const validRoles: UserRole[] = [
-      "super_admin",
-      "admin",
-      "content_manager",
-      "appointment_manager",
-      "finance_manager",
-      "doctor",
-      "nurse",
-      "user",
-    ];
-    if (!validRoles.includes(newRole)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
     // Prevent changing super_admin role (only one super_admin allowed)

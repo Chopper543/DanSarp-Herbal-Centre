@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
+import { assertRateLimitConfigured, checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 import { getSecurityHeaders } from "@/lib/security/csp";
 import { createClient } from "@/lib/supabase/server";
+import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/validate-request-size";
+import { requireCsrfToken } from "@/lib/security/csrf";
 
 const PUBLIC_PATHS = [
   "/login",
@@ -22,6 +24,9 @@ function isPublicPath(pathname: string) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApiRoute = pathname.startsWith("/api/");
+  const isWebhook = pathname.startsWith("/api/webhooks/");
+  const isMutatingMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
 
   const twofaRequired = request.cookies.get("twofa_required")?.value === "true";
   const twofaVerified = request.cookies.get("twofa_verified")?.value === "true";
@@ -76,12 +81,54 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Apply rate limiting to API routes
-  if (pathname.startsWith("/api/")) {
+  // Apply protective checks to API routes
+  if (isApiRoute) {
+    // Enforce CSRF and request-size limits for mutating routes (webhooks opt-out)
+    if (!isWebhook && isMutatingMethod) {
+      const sizeCheck = await validateRequestSize(
+        request,
+        getMaxSizeForContentType(request.headers.get("content-type"))
+      );
+      if (sizeCheck) {
+        Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
+          sizeCheck.headers.set(key, value);
+        });
+        return sizeCheck;
+      }
+
+      const csrf = await requireCsrfToken(request);
+      if (!csrf.valid) {
+        const errorResponse = NextResponse.json(
+          { error: csrf.error || "Invalid CSRF token" },
+          { status: 403 }
+        );
+        Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
+          errorResponse.headers.set(key, value);
+        });
+        return errorResponse;
+      }
+    }
+
+    // In production, require Redis-backed rate limiting
+    try {
+      assertRateLimitConfigured();
+    } catch (error: any) {
+      const misconfig = NextResponse.json(
+        {
+          error: "Rate limiting misconfigured",
+          message: error.message,
+        },
+        { status: 500 }
+      );
+      Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
+        misconfig.headers.set(key, value);
+      });
+      return misconfig;
+    }
+
     // Skip rate limiting for webhooks (they have their own verification)
-    if (pathname.startsWith("/api/webhooks/")) {
+    if (isWebhook) {
       const response = await updateSession(request);
-      // Add security headers
       Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
         response.headers.set(key, value);
       });

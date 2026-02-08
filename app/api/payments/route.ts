@@ -6,11 +6,31 @@ import { FlutterwaveProvider } from "@/lib/payments/providers/flutterwave";
 import { GhanaRailsProvider } from "@/lib/payments/providers/ghana-rails";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
+import { logAuditEvent } from "@/lib/audit/log";
+import { z } from "zod";
 
 // Register payment providers
 paymentService.registerProvider("paystack", new PaystackProvider());
 paymentService.registerProvider("flutterwave", new FlutterwaveProvider());
 paymentService.registerProvider("custom", new GhanaRailsProvider());
+
+const PaymentRequestSchema = z.object({
+  amount: z.coerce.number().positive(),
+  currency: z.string().min(1).default("GHS"),
+  payment_method: z.string().min(1),
+  appointment_id: z.string().uuid().optional(),
+  provider: z.enum(["paystack", "flutterwave", "custom"]).optional(),
+  appointment_data: z.any().optional(),
+  phone_number: z.string().optional(),
+  bank_name: z.string().optional(),
+  account_number: z.string().optional(),
+  bank_notes: z.string().optional(),
+  // Card fields should be absent; we keep them to explicitly reject
+  card_number: z.string().optional(),
+  card_expiry: z.string().optional(),
+  card_name: z.string().optional(),
+  card_pin: z.string().optional(),
+});
 
 /**
  * Ensures user exists in users table before creating payment
@@ -106,30 +126,45 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { 
-      amount, 
-      currency, 
-      payment_method, 
-      appointment_id, 
-      provider, 
+    const parsed = PaymentRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payment request", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const {
+      amount,
+      currency,
+      payment_method,
+      appointment_id,
+      provider,
       appointment_data,
-      // Mobile Money fields
       phone_number,
-      // Bank Transfer fields
       bank_name,
       account_number,
       bank_notes,
-      // Card Payment fields
       card_number,
       card_expiry,
       card_name,
-      card_pin
-    } = body;
+      card_pin,
+    } = parsed.data;
 
     const momoMethods = ["mtn_momo", "vodafone_cash", "airteltigo"];
     if (momoMethods.includes(payment_method) && !phone_number) {
       return NextResponse.json(
         { error: "Phone number is required for mobile money payments" },
+        { status: 400 }
+      );
+    }
+
+    // Reject raw card details to avoid handling PAN/PIN in our backend
+    if (card_number || card_expiry || card_name || card_pin) {
+      return NextResponse.json(
+        {
+          error: "Raw card details are not accepted. Please tokenize on the client or use the provider-hosted payment page.",
+        },
         { status: 400 }
       );
     }
@@ -154,6 +189,10 @@ export async function POST(request: NextRequest) {
     const customRailsMethods = ["bank_transfer", "ghqr", "mtn_momo", "vodafone_cash", "airteltigo"];
     if (customRailsMethods.includes(payment_method)) {
       selectedProvider = "custom";
+    }
+    const allowedProviders = ["paystack", "flutterwave", "custom"];
+    if (!allowedProviders.includes(selectedProvider)) {
+      return NextResponse.json({ error: "Unsupported payment provider" }, { status: 400 });
     }
 
     // Get user email for payment
@@ -188,15 +227,6 @@ export async function POST(request: NextRequest) {
         metadata.bank_notes = bank_notes;
       }
     }
-    if (card_number) {
-      // Don't store full card number or PIN in metadata for security
-      // Only store last 4 digits and card type
-      metadata.card_last4 = card_number.slice(-4);
-      metadata.card_expiry = card_expiry;
-      metadata.card_name = card_name;
-      // Card PIN should only be passed to payment gateway, never stored
-    }
-
     // Process payment with method-specific data
     const paymentRequest: any = {
       amount,
@@ -210,13 +240,6 @@ export async function POST(request: NextRequest) {
     // Add method-specific fields to payment request
     if (phone_number) {
       paymentRequest.phone_number = phone_number;
-    }
-    if (card_number && card_expiry && card_name && card_pin) {
-      // Pass card details to payment provider (will be handled securely)
-      paymentRequest.card_number = card_number;
-      paymentRequest.card_expiry = card_expiry;
-      paymentRequest.card_name = card_name;
-      paymentRequest.card_pin = card_pin;
     }
     if (bank_name && account_number) {
       paymentRequest.bank_name = bank_name;
@@ -262,6 +285,21 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+
+    // Audit payment creation (non-blocking)
+    await logAuditEvent({
+      userId: user.id,
+      action: "create_payment",
+      resourceType: "payment",
+      resourceId: payment.id,
+      metadata: {
+        amount,
+        currency: currency || "GHS",
+        payment_method,
+        provider: selectedProvider,
+        appointment_id: appointment_id || null,
+      },
+    });
 
     return NextResponse.json({
       payment,

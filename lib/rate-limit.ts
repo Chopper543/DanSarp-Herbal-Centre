@@ -19,6 +19,19 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
   });
 }
 
+/**
+ * Ensures Redis-backed rate limiting is available in production.
+ * Throws to force misconfiguration to surface early rather than silently
+ * downgrade to in-memory limits.
+ */
+export function assertRateLimitConfigured() {
+  if (process.env.NODE_ENV === "production" && !ratelimit) {
+    throw new Error(
+      "Upstash Redis is not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for production rate limiting."
+    );
+  }
+}
+
 // In-memory fallback rate limiter for development
 class InMemoryRateLimiter {
   private requests: Map<string, number[]> = new Map();
