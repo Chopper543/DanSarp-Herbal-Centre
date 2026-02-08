@@ -91,7 +91,14 @@ Ensure RLS is enabled on all tables. Check in Supabase dashboard:
 - Authentication > Policies
 - Verify policies are active for all tables
 
-### 3. Set Up Database Backups
+### 3. Supabase Security Advisor Notes
+
+- Hardened search_path for trigger/helper functions in migration `035_fix_security_lints.sql`
+- Newsletter subscribers: INSERT policy remains intentionally open for self-serve signups
+- PostGIS stays in `public` for now; plan a future move to `extensions` when safe
+- Enable leaked password protection (Auth → Password Strength → Leaked password protection)
+
+### 4. Set Up Database Backups
 
 Configure automatic backups in Supabase:
 - Go to Settings > Database
