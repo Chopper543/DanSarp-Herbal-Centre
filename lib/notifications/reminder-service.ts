@@ -1,6 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
-import { enqueueReminderJob } from "@/lib/queue/reminders";
+import { createServiceClient } from "@/lib/supabase/service";
+import { enqueueReminderJob, isReminderQueueEnabled } from "@/lib/queue/reminders";
 import { dispatchReminder, ReminderPreferences } from "@/lib/notifications/reminder-dispatch";
+import { logger } from "@/lib/monitoring/logger";
 
 /**
  * Schedules appointment reminders via BullMQ with delay. Falls back to
@@ -10,7 +11,7 @@ export async function scheduleAppointmentReminders(
   appointmentId: string,
   preferences: ReminderPreferences
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   // Fetch minimal appointment data to compute schedule windows
   const { data: appointment, error } = await supabase
     .from("appointments")
@@ -24,6 +25,7 @@ export async function scheduleAppointmentReminders(
 
   const appointmentDate = new Date((appointment as any).appointment_date);
   const now = new Date();
+  const queueEnabled = isReminderQueueEnabled();
 
   for (const hoursBefore of preferences.reminderTiming) {
     const reminderTime = new Date(appointmentDate.getTime() - hoursBefore * 60 * 60 * 1000);
@@ -39,6 +41,16 @@ export async function scheduleAppointmentReminders(
       continue;
     }
 
+    if (!queueEnabled) {
+      // Serverless-safe fallback: do not fire early when queue is disabled.
+      logger.warn("Skipping delayed reminder because BullMQ is disabled", {
+        appointmentId,
+        hoursBefore,
+        reminderTime: reminderTime.toISOString(),
+      });
+      continue;
+    }
+
     try {
       await enqueueReminderJob(
         {
@@ -49,8 +61,7 @@ export async function scheduleAppointmentReminders(
         delayMs
       );
     } catch (err) {
-      // Queue is unavailable or misconfigured; fallback to direct send to avoid losing reminder
-      await dispatchReminder(appointmentId, preferences);
+      logger.error("Failed to enqueue reminder job", err);
     }
   }
 }

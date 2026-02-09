@@ -28,6 +28,7 @@ export class GhanaRailsProvider implements PaymentProvider {
         status: "pending",
         provider_transaction_id: transactionId,
         metadata: {
+          ...(request.metadata || {}),
           provider_status: "pending",
           payment_method: request.payment_method,
           phone_number: phoneNumber,
@@ -52,6 +53,7 @@ export class GhanaRailsProvider implements PaymentProvider {
         provider_transaction_id: transactionId,
         payment_url: undefined,
         metadata: {
+          ...(request.metadata || {}),
           provider_status: "pending",
           payment_method: request.payment_method,
           ghqr_payload: ghqrPayload,
@@ -68,6 +70,7 @@ export class GhanaRailsProvider implements PaymentProvider {
         status: "pending",
         provider_transaction_id: transactionId,
         metadata: {
+          ...(request.metadata || {}),
           provider_status: "pending",
           payment_method: request.payment_method,
           bank_account_name: this.BANK_ACCOUNT_NAME,
@@ -84,6 +87,7 @@ export class GhanaRailsProvider implements PaymentProvider {
       status: "pending",
       provider_transaction_id: transactionId,
       metadata: {
+        ...(request.metadata || {}),
         provider_status: "pending",
         payment_method: request.payment_method,
         instructions: this.getPaymentInstructions(request.payment_method),

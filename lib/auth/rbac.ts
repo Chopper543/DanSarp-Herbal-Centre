@@ -43,6 +43,8 @@ export function isClinicalStaff(userRole: UserRole | null): boolean {
 }
 
 export function isAdmin(userRole: UserRole | null): boolean {
+  // NOTE: Broad admin/back-office check used by legacy routes.
+  // Prefer section-based capability checks (canAccessSection) for PHI-sensitive APIs.
   return hasRole(userRole, [
     "super_admin",
     "admin",
@@ -50,6 +52,10 @@ export function isAdmin(userRole: UserRole | null): boolean {
     "appointment_manager",
     "finance_manager",
   ]);
+}
+
+export function isSystemAdmin(userRole: UserRole | null): boolean {
+  return hasRole(userRole, ["super_admin", "admin"]);
 }
 
 export function isSuperAdmin(userRole: UserRole | null): boolean {

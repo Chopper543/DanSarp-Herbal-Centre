@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessClinicalNotes = canAccessSection(userRole, "clinical_notes");
 
     let searchQuery = supabase
       .from("clinical_notes")
@@ -32,11 +33,11 @@ export async function GET(request: NextRequest) {
 
     // Filter by patient_id if provided
     if (patientId) {
-      if (!isUserAdmin && patientId !== user.id) {
+      if (!canAccessClinicalNotes && patientId !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       searchQuery = searchQuery.eq("patient_id", patientId);
-    } else if (!isUserAdmin) {
+    } else if (!canAccessClinicalNotes) {
       // Regular users can only search their own notes
       searchQuery = searchQuery.eq("patient_id", user.id);
     }

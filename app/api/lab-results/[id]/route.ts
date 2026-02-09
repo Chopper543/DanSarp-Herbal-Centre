@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
+import { getUserRole, isDoctor, isNurse } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { z } from "zod";
+
+const testResultSchema = z
+  .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+  .optional();
+
+const LabResultUpdateSchema = z
+  .object({
+    appointment_id: z.string().uuid().optional().nullable(),
+    test_name: z.string().min(1).max(200).optional(),
+    test_type: z.string().max(100).optional().nullable(),
+    ordered_date: z.string().date().optional().nullable(),
+    completed_date: z.string().date().optional().nullable(),
+    results: testResultSchema,
+    normal_range: z.string().max(1000).optional().nullable(),
+    units: z.string().max(100).optional().nullable(),
+    file_urls: z.array(z.string().url()).max(20).optional(),
+    status: z.string().min(1).max(50).optional(),
+    notes: z.string().max(8000).optional().nullable(),
+    doctor_notes: z.string().max(8000).optional().nullable(),
+  })
+  .strict();
 
 export async function GET(
   request: NextRequest,
@@ -18,13 +42,7 @@ export async function GET(
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
-    const isStaff = Boolean(
-      isUserAdmin ||
-        userRole === "appointment_manager" ||
-        isDoctor(userRole) ||
-        isNurse(userRole)
-    );
+    const canAccessLabResults = canAccessSection(userRole, "lab_results");
 
     // @ts-ignore
     const { data: labResult, error } = await supabase
@@ -39,7 +57,11 @@ export async function GET(
 
     // Check permissions (patients see own; staff can see all)
     const typedLabResult = labResult as { patient_id: string; doctor_id: string } | null;
-    if (!isStaff && typedLabResult?.patient_id !== user.id && typedLabResult?.doctor_id !== user.id) {
+    if (
+      !canAccessLabResults &&
+      typedLabResult?.patient_id !== user.id &&
+      typedLabResult?.doctor_id !== user.id
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -65,13 +87,7 @@ export async function PUT(
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
-    const canUpdate = Boolean(
-      isUserAdmin ||
-        userRole === "appointment_manager" ||
-        isDoctor(userRole) ||
-        isNurse(userRole)
-    );
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     // Check if lab result exists and user has permission
     // @ts-ignore
@@ -85,15 +101,36 @@ export async function PUT(
       return NextResponse.json({ error: "Lab result not found" }, { status: 404 });
     }
 
-    // Check permissions (clinical staff can update; otherwise only assigned doctor)
+    // Check permissions (system admin, nurse, or assigned doctor)
     const typedExistingLabResult = existingLabResult as { doctor_id: string } | null;
-    if (!canUpdate && typedExistingLabResult?.doctor_id !== user.id) {
+    const canUpdateAsNurse = isNurse(userRole);
+    const canUpdateOwnAsDoctor = isDoctor(userRole) && typedExistingLabResult?.doctor_id === user.id;
+    if (!isSystemAdmin && !canUpdateAsNurse && !canUpdateOwnAsDoctor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();
+    const parsed = LabResultUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid lab result update payload",
+          details: parsed.error.flatten().fieldErrors,
+        },
+        { status: 400 }
+      );
+    }
+
     const updatePayload = {
-      ...body,
+      ...parsed.data,
+      normal_range: parsed.data.normal_range
+        ? sanitizeText(parsed.data.normal_range)
+        : parsed.data.normal_range ?? null,
+      units: parsed.data.units ? sanitizeText(parsed.data.units) : parsed.data.units ?? null,
+      notes: parsed.data.notes ? sanitizeText(parsed.data.notes) : parsed.data.notes ?? null,
+      doctor_notes: parsed.data.doctor_notes
+        ? sanitizeText(parsed.data.doctor_notes)
+        : parsed.data.doctor_notes ?? null,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
@@ -133,10 +170,10 @@ export async function DELETE(
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     // Only admins can delete
-    if (!isUserAdmin) {
+    if (!isSystemAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

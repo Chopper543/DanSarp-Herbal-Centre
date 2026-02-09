@@ -9,8 +9,18 @@ type ReminderJobData = {
 
 const connectionUrl =
   process.env.BULLMQ_REDIS_URL || process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL;
+const queueExplicitlyEnabled = process.env.ENABLE_BULLMQ_REMINDERS === "true";
+
+export function isReminderQueueEnabled(): boolean {
+  return queueExplicitlyEnabled && Boolean(connectionUrl);
+}
 
 function getConnection() {
+  if (!queueExplicitlyEnabled) {
+    throw new Error(
+      "BullMQ reminders are disabled. Set ENABLE_BULLMQ_REMINDERS=true to enable queued reminders."
+    );
+  }
   if (!connectionUrl) {
     throw new Error(
       "BullMQ Redis connection missing. Set BULLMQ_REDIS_URL (or UPSTASH_REDIS_URL/REDIS_URL)."

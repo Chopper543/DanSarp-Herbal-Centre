@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
+import { getUserRole, isDoctor, isNurse } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
 import { LabResult, TestResult } from "@/types";
 import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessLabResults = canAccessSection(userRole, "lab_results");
 
     let query = supabase.from("lab_results").select("*", { count: "exact" });
 
@@ -85,7 +86,11 @@ export async function GET(request: NextRequest) {
 
       // Check permissions
       const typedLabResult = labResult as { patient_id: string; doctor_id: string } | null;
-      if (!isUserAdmin && typedLabResult?.patient_id !== user.id && typedLabResult?.doctor_id !== user.id) {
+      if (
+        !canAccessLabResults &&
+        typedLabResult?.patient_id !== user.id &&
+        typedLabResult?.doctor_id !== user.id
+      ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -94,17 +99,17 @@ export async function GET(request: NextRequest) {
 
     // Filter by patient_id if provided
     if (patientId) {
-      if (!isUserAdmin && patientId !== user.id) {
+      if (!canAccessLabResults && patientId !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       query = query.eq("patient_id", patientId);
-    } else if (!isUserAdmin) {
+    } else if (!canAccessLabResults) {
       // Regular users can only see their own lab results
       query = query.eq("patient_id", user.id);
     }
 
-    // Filter by doctor_id (admin only)
-    if (doctorId && isUserAdmin) {
+    // Filter by doctor_id (clinical staff/admin only)
+    if (doctorId && canAccessLabResults) {
       query = query.eq("doctor_id", doctorId);
     }
 
@@ -166,15 +171,10 @@ export async function POST(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
-    // Clinical staff can create lab results (doctor + nurse + appointment_manager + admin)
-    const canCreate = Boolean(
-      isUserAdmin ||
-        userRole === "appointment_manager" ||
-        isDoctor(userRole) ||
-        isNurse(userRole)
-    );
+    // Clinical staff can create lab results (doctor + nurse + system admin).
+    const canCreate = Boolean(isSystemAdmin || isDoctor(userRole) || isNurse(userRole));
     if (!canCreate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -265,7 +265,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     const body = await request.json();
     const parsed = LabResultUpdateSchema.safeParse(body);
@@ -291,7 +291,9 @@ export async function PUT(request: NextRequest) {
 
     // Check permissions
     const typedExistingLabResult = existingLabResult as { doctor_id: string } | null;
-    if (!isUserAdmin && typedExistingLabResult?.doctor_id !== user.id) {
+    const canUpdateAsNurse = isNurse(userRole);
+    const canUpdateOwnAsDoctor = isDoctor(userRole) && typedExistingLabResult?.doctor_id === user.id;
+    if (!isSystemAdmin && !canUpdateAsNurse && !canUpdateOwnAsDoctor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -312,6 +314,7 @@ export async function PUT(request: NextRequest) {
 
     const { data: labResult, error } = await supabase
       .from("lab_results")
+      // @ts-ignore - Supabase type inference issue
       .update(updatePayload as any)
       .eq("id", id)
       .select()
@@ -352,7 +355,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -373,7 +376,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Only admins can delete lab results
-    if (!isUserAdmin) {
+    if (!isSystemAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

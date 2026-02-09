@@ -3,12 +3,22 @@ import crypto from "crypto";
 
 const CSRF_TOKEN_NAME = "csrf-token";
 const CSRF_TOKEN_HEADER = "x-csrf-token";
+const CSRF_EXEMPT_PATHS = [
+  "/api/webhooks/",
+  "/api/payments/ghana-rails/webhook",
+];
 
 /**
  * Generates a CSRF token
  */
 export function generateCsrfToken(): string {
   return crypto.randomBytes(32).toString("hex");
+}
+
+export function isCsrfExemptPath(pathname: string): boolean {
+  return CSRF_EXEMPT_PATHS.some((path) =>
+    path.endsWith("/") ? pathname.startsWith(path) : pathname === path
+  );
 }
 
 /**
@@ -31,23 +41,37 @@ export async function getCsrfToken(): Promise<string> {
  * @param requestToken - Token from request header or body
  * @returns true if token is valid
  */
-export async function validateCsrfToken(requestToken: string | null): Promise<boolean> {
+export async function validateCsrfToken(
+  requestToken: string | null,
+  sessionTokenOverride?: string | null
+): Promise<boolean> {
   if (!requestToken) {
     return false;
   }
 
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(CSRF_TOKEN_NAME)?.value;
+  const sessionToken =
+    sessionTokenOverride !== undefined
+      ? sessionTokenOverride
+      : (await cookies()).get(CSRF_TOKEN_NAME)?.value;
 
   if (!sessionToken) {
     return false;
   }
 
+  // timingSafeEqual throws if buffer lengths differ.
+  if (requestToken.length !== sessionToken.length) {
+    return false;
+  }
+
   // Use constant-time comparison to prevent timing attacks
-  return crypto.timingSafeEqual(
-    Buffer.from(requestToken),
-    Buffer.from(sessionToken)
-  );
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(requestToken),
+      Buffer.from(sessionToken)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -58,7 +82,8 @@ export function setCsrfTokenCookie(token: string): { name: string; value: string
     name: CSRF_TOKEN_NAME,
     value: token,
     options: {
-      httpOnly: true,
+      // Must be readable by client fetch interceptor to set X-CSRF-Token.
+      httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict" as const,
       path: "/",
@@ -82,7 +107,7 @@ export async function requireCsrfToken(
 
   // Skip CSRF validation for webhooks (they have their own signature verification)
   const url = new URL(request.url);
-  if (url.pathname.startsWith("/api/webhooks/")) {
+  if (isCsrfExemptPath(url.pathname)) {
     return { valid: true };
   }
 
@@ -97,7 +122,15 @@ export async function requireCsrfToken(
     };
   }
 
-  const isValid = await validateCsrfToken(token);
+  const cookieHeader = request.headers.get("cookie");
+  const sessionToken =
+    cookieHeader
+      ?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${CSRF_TOKEN_NAME}=`))
+      ?.slice(`${CSRF_TOKEN_NAME}=`.length) || null;
+
+  const isValid = await validateCsrfToken(token, sessionToken);
   if (!isValid) {
     return {
       valid: false,

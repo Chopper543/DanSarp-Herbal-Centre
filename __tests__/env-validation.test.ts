@@ -12,7 +12,7 @@ describe("validateEnv", () => {
   });
 
   it("produces warnings when Ghana rails settings are missing", () => {
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";

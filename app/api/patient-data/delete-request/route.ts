@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole, isSystemAdmin } from "@/lib/auth/rbac";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
 
@@ -20,12 +20,13 @@ export async function POST(request: NextRequest) {
     const reason = body.reason || null;
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isUserAdmin = isSystemAdmin(userRole);
     if (targetUserId !== user.id && !isUserAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Record deletion request for manual/automated processing
+    // @ts-ignore - Supabase type inference issue with deletion_requests table
     const { error } = await supabase.from("deletion_requests").insert({
       user_id: targetUserId,
       requested_by: user.id,

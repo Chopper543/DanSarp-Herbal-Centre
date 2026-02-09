@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
+import { getUserRole, isDoctor } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
 import { ClinicalNote, VitalSigns } from "@/types";
 import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessClinicalNotes = canAccessSection(userRole, "clinical_notes");
 
     let query = supabase.from("clinical_notes").select("*", { count: "exact" });
 
@@ -91,7 +92,11 @@ export async function GET(request: NextRequest) {
 
       // Check permissions
       const typedNote = note as { patient_id: string; doctor_id: string } | null;
-      if (!isUserAdmin && typedNote?.patient_id !== user.id && typedNote?.doctor_id !== user.id) {
+      if (
+        !canAccessClinicalNotes &&
+        typedNote?.patient_id !== user.id &&
+        typedNote?.doctor_id !== user.id
+      ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -100,17 +105,17 @@ export async function GET(request: NextRequest) {
 
     // Filter by patient_id if provided
     if (patientId) {
-      if (!isUserAdmin && patientId !== user.id) {
+      if (!canAccessClinicalNotes && patientId !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       query = query.eq("patient_id", patientId);
-    } else if (!isUserAdmin) {
+    } else if (!canAccessClinicalNotes) {
       // Regular users can only see their own notes
       query = query.eq("patient_id", user.id);
     }
 
-    // Filter by doctor_id (admin only)
-    if (doctorId && isUserAdmin) {
+    // Filter by doctor_id (clinical staff/admin only)
+    if (doctorId && canAccessClinicalNotes) {
       query = query.eq("doctor_id", doctorId);
     }
 
@@ -180,12 +185,10 @@ export async function POST(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
-    // Clinical notes can be created by doctor + appointment_manager + admin (nurse cannot)
-    const canCreate = Boolean(
-      isUserAdmin || userRole === "appointment_manager" || isDoctor(userRole)
-    );
+    // Clinical notes can be created by doctors and system admins.
+    const canCreate = Boolean(isSystemAdmin || isDoctor(userRole));
     if (!canCreate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -274,7 +277,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     const body = await request.json();
     const parsed = ClinicalNoteUpdateSchema.safeParse(body);
@@ -300,7 +303,8 @@ export async function PUT(request: NextRequest) {
 
     // Check permissions
     const typedExistingNote = existingNote as { doctor_id: string } | null;
-    if (!isUserAdmin && typedExistingNote?.doctor_id !== user.id) {
+    const canEditOwnAsDoctor = isDoctor(userRole) && typedExistingNote?.doctor_id === user.id;
+    if (!isSystemAdmin && !canEditOwnAsDoctor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -317,6 +321,7 @@ export async function PUT(request: NextRequest) {
 
     const { data: note, error } = await supabase
       .from("clinical_notes")
+      // @ts-ignore - Supabase type inference issue
       .update(updatePayload as any)
       .eq("id", id)
       .select()
@@ -357,7 +362,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -378,7 +383,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Only admins can delete clinical notes
-    if (!isUserAdmin) {
+    if (!isSystemAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

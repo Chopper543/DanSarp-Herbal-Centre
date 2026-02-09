@@ -207,6 +207,21 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
+  error_message TEXT,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_status_created_at ON deletion_requests(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_user_id ON deletion_requests(user_id);
+
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -582,8 +597,54 @@ AS $$
 DECLARE user_role_text TEXT;
 BEGIN
   PERFORM set_config('search_path','public,extensions',true);
+  -- Legacy broad back-office check (includes non-clinical managers).
   SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
   RETURN user_role_text IN ('super_admin','admin','content_manager','appointment_manager','finance_manager','doctor','nurse');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION is_clinical_staff_user()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+STABLE
+AS $$
+DECLARE user_role_text TEXT;
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+  SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
+  RETURN user_role_text IN ('super_admin','admin','doctor','nurse');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION is_patient_records_staff_user()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+STABLE
+AS $$
+DECLARE user_role_text TEXT;
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+  SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
+  RETURN user_role_text IN ('super_admin','admin','appointment_manager','doctor','nurse');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION is_prescriptions_staff_user()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+STABLE
+AS $$
+DECLARE user_role_text TEXT;
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+  SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
+  RETURN user_role_text IN ('super_admin','admin','doctor','nurse');
 END;
 $$;
 
@@ -716,6 +777,7 @@ CREATE TRIGGER intake_forms_updated_at BEFORE UPDATE ON intake_forms FOR EACH RO
 CREATE TRIGGER intake_form_responses_updated_at BEFORE UPDATE ON intake_form_responses FOR EACH ROW EXECUTE FUNCTION update_intake_forms_updated_at();
 CREATE TRIGGER waitlist_updated_at BEFORE UPDATE ON appointment_waitlist FOR EACH ROW EXECUTE FUNCTION update_waitlist_updated_at();
 CREATE TRIGGER health_metrics_updated_at BEFORE UPDATE ON health_metrics FOR EACH ROW EXECUTE FUNCTION update_health_metrics_updated_at();
+CREATE TRIGGER deletion_requests_updated_at BEFORE UPDATE ON deletion_requests FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Auth sync trigger
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -739,6 +801,7 @@ ALTER TABLE blog_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE newsletter_subscribers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deletion_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE patient_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE prescriptions ENABLE ROW LEVEL SECURITY;
@@ -827,25 +890,40 @@ CREATE POLICY invites_insert_super ON admin_invites FOR INSERT WITH CHECK ((sele
 -- Audit logs
 CREATE POLICY audit_select_admin ON audit_logs FOR SELECT USING ((select is_super_admin_or_admin()));
 
+-- Deletion requests
+CREATE POLICY deletion_requests_select ON deletion_requests
+FOR SELECT USING (
+  ((select auth.uid()) = user_id) OR
+  ((select auth.uid()) = requested_by) OR
+  (select is_super_admin_or_admin())
+);
+CREATE POLICY deletion_requests_insert ON deletion_requests
+FOR INSERT WITH CHECK (
+  ((select auth.uid()) = requested_by) AND
+  (((select auth.uid()) = user_id) OR (select is_super_admin_or_admin()))
+);
+CREATE POLICY deletion_requests_update_admin ON deletion_requests
+FOR UPDATE USING ((select is_super_admin_or_admin()));
+
 -- Messages
 CREATE POLICY messages_select ON messages FOR SELECT USING (((select auth.uid()) = sender_id) OR ((select auth.uid()) = recipient_id) OR (select is_admin_user()));
 CREATE POLICY messages_insert ON messages FOR INSERT WITH CHECK ((select auth.uid()) = sender_id);
 CREATE POLICY messages_update_recipient ON messages FOR UPDATE USING (((select auth.uid()) = recipient_id));
 
 -- Patient records
-CREATE POLICY patient_select ON patient_records FOR SELECT USING (((select auth.uid()) = user_id) OR (select is_admin_user()));
-CREATE POLICY patient_insert_admin ON patient_records FOR INSERT WITH CHECK ((select is_admin_user()));
-CREATE POLICY patient_update ON patient_records FOR UPDATE USING (((select auth.uid()) = user_id) OR (select is_admin_user())) WITH CHECK (((select auth.uid()) = user_id) OR (select is_admin_user()));
+CREATE POLICY patient_select ON patient_records FOR SELECT USING (((select auth.uid()) = user_id) OR (select is_patient_records_staff_user()));
+CREATE POLICY patient_insert_admin ON patient_records FOR INSERT WITH CHECK ((select is_patient_records_staff_user()));
+CREATE POLICY patient_update ON patient_records FOR UPDATE USING (((select auth.uid()) = user_id) OR (select is_patient_records_staff_user())) WITH CHECK (((select auth.uid()) = user_id) OR (select is_patient_records_staff_user()));
 CREATE POLICY patient_delete_admin ON patient_records FOR DELETE USING ((select is_super_admin_or_admin()));
 
 -- Prescriptions
-CREATE POLICY rx_select_patient_doctor ON prescriptions FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY rx_insert_doc_admin ON prescriptions FOR INSERT WITH CHECK (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY rx_update_doc_admin ON prescriptions FOR UPDATE USING (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
+CREATE POLICY rx_select_patient_doctor ON prescriptions FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_prescriptions_staff_user()));
+CREATE POLICY rx_insert_doc_admin ON prescriptions FOR INSERT WITH CHECK (((select auth.uid()) = doctor_id) OR (select is_prescriptions_staff_user()));
+CREATE POLICY rx_update_doc_admin ON prescriptions FOR UPDATE USING (((select auth.uid()) = doctor_id) OR (select is_prescriptions_staff_user()));
 
 -- Prescription refills
 CREATE POLICY rx_refill_manage_patient ON prescription_refills FOR ALL USING (((select auth.uid()) = patient_id)) WITH CHECK (((select auth.uid()) = patient_id));
-CREATE POLICY rx_refill_manage_admin ON prescription_refills FOR ALL USING ((select is_admin_user()));
+CREATE POLICY rx_refill_manage_admin ON prescription_refills FOR ALL USING ((select is_prescriptions_staff_user()));
 
 -- Treatment plans
 CREATE POLICY plan_select ON treatment_plans FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_admin_user()));
@@ -861,19 +939,19 @@ CREATE POLICY plan_fu_manage ON treatment_plan_followups FOR ALL USING (
 );
 
 -- Doctor availability
-CREATE POLICY availability_select ON doctor_availability FOR SELECT USING (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY availability_manage ON doctor_availability FOR ALL USING (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
+CREATE POLICY availability_select ON doctor_availability FOR SELECT USING (((select auth.uid()) = doctor_id) OR (select is_patient_records_staff_user()));
+CREATE POLICY availability_manage ON doctor_availability FOR ALL USING (((select auth.uid()) = doctor_id) OR (select is_patient_records_staff_user()));
 
 -- Lab results
-CREATE POLICY lab_select ON lab_results FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY lab_insert ON lab_results FOR INSERT WITH CHECK (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY lab_update ON lab_results FOR UPDATE USING (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
+CREATE POLICY lab_select ON lab_results FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_clinical_staff_user()));
+CREATE POLICY lab_insert ON lab_results FOR INSERT WITH CHECK (((select auth.uid()) = doctor_id) OR (select is_clinical_staff_user()));
+CREATE POLICY lab_update ON lab_results FOR UPDATE USING (((select auth.uid()) = doctor_id) OR (select is_clinical_staff_user()));
 CREATE POLICY lab_delete_admin ON lab_results FOR DELETE USING ((select is_super_admin_or_admin()));
 
 -- Clinical notes
-CREATE POLICY notes_select ON clinical_notes FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY notes_insert ON clinical_notes FOR INSERT WITH CHECK (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
-CREATE POLICY notes_update ON clinical_notes FOR UPDATE USING (((select auth.uid()) = doctor_id) OR (select is_admin_user()));
+CREATE POLICY notes_select ON clinical_notes FOR SELECT USING (((select auth.uid()) = patient_id) OR ((select auth.uid()) = doctor_id) OR (select is_clinical_staff_user()));
+CREATE POLICY notes_insert ON clinical_notes FOR INSERT WITH CHECK (((select auth.uid()) = doctor_id) OR (select is_clinical_staff_user()));
+CREATE POLICY notes_update ON clinical_notes FOR UPDATE USING (((select auth.uid()) = doctor_id) OR (select is_clinical_staff_user()));
 CREATE POLICY notes_delete_admin ON clinical_notes FOR DELETE USING ((select is_super_admin_or_admin()));
 
 -- Intake forms
@@ -885,7 +963,7 @@ CREATE POLICY intake_resp_select_patient ON intake_form_responses FOR SELECT USI
 CREATE POLICY intake_resp_manage_patient ON intake_form_responses FOR INSERT WITH CHECK (((select auth.uid()) = patient_id));
 CREATE POLICY intake_resp_update_patient ON intake_form_responses FOR UPDATE USING (((select auth.uid()) = patient_id));
 CREATE POLICY intake_resp_staff_view ON intake_form_responses FOR SELECT USING (
-  EXISTS (SELECT 1 FROM users u WHERE u.id = (select auth.uid()) AND u.role IN ('admin','super_admin','appointment_manager','content_manager','doctor','nurse'))
+  EXISTS (SELECT 1 FROM users u WHERE u.id = (select auth.uid()) AND u.role IN ('admin','super_admin','appointment_manager','doctor','nurse'))
 );
 CREATE POLICY intake_resp_staff_update ON intake_form_responses FOR UPDATE USING (
   EXISTS (SELECT 1 FROM users u WHERE u.id = (select auth.uid()) AND u.role IN ('admin','super_admin','appointment_manager','doctor','nurse'))
@@ -955,14 +1033,14 @@ USING (
 CREATE POLICY "Doctors can view lab result files"
 ON storage.objects FOR SELECT TO authenticated
 USING (
-  bucket_id = 'lab-results' AND (select is_admin_user())
+  bucket_id = 'lab-results' AND (select is_clinical_staff_user())
 );
 CREATE POLICY "Doctors can upload lab result files"
 ON storage.objects FOR INSERT TO authenticated
-WITH CHECK (bucket_id = 'lab-results' AND (select is_admin_user()));
+WITH CHECK (bucket_id = 'lab-results' AND (select is_clinical_staff_user()));
 CREATE POLICY "Doctors can delete lab result files"
 ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'lab-results' AND (select is_admin_user()));
+USING (bucket_id = 'lab-results' AND (select is_clinical_staff_user()));
 
 -- Clinical notes bucket
 DROP POLICY IF EXISTS "Patients can view own clinical note files" ON storage.objects;
@@ -982,13 +1060,13 @@ USING (
 );
 CREATE POLICY "Doctors can view clinical note files"
 ON storage.objects FOR SELECT TO authenticated
-USING (bucket_id = 'clinical-notes' AND (select is_admin_user()));
+USING (bucket_id = 'clinical-notes' AND (select is_clinical_staff_user()));
 CREATE POLICY "Doctors can upload clinical note files"
 ON storage.objects FOR INSERT TO authenticated
-WITH CHECK (bucket_id = 'clinical-notes' AND (select is_admin_user()));
+WITH CHECK (bucket_id = 'clinical-notes' AND (select is_clinical_staff_user()));
 CREATE POLICY "Doctors can delete clinical note files"
 ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'clinical-notes' AND (select is_admin_user()));
+USING (bucket_id = 'clinical-notes' AND (select is_clinical_staff_user()));
 
 -- Intake forms bucket
 DROP POLICY IF EXISTS "Patients can view own intake form files" ON storage.objects;

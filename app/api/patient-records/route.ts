@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
 import { logAuditEvent } from "@/lib/audit/log";
 import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -50,10 +51,10 @@ export async function GET(request: NextRequest) {
     // If user_id is provided, get that specific record
     if (userId) {
       const userRole = await getUserRole();
-      const isUserAdmin = userRole && isAdmin(userRole);
+      const canAccessPatientRecords = canAccessSection(userRole, "patient_records");
       
-      // Only allow if user is admin or requesting their own record
-      if (!isUserAdmin && userId !== user.id) {
+      // Only allow if staff has section access or requesting own record.
+      if (!canAccessPatientRecords && userId !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -80,10 +81,10 @@ export async function GET(request: NextRequest) {
 
     // Get user's role
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessPatientRecords = canAccessSection(userRole, "patient_records");
 
-    if (isUserAdmin) {
-      // Admins can get all records
+    if (canAccessPatientRecords) {
+      // Staff with patient_records section access can get all records.
       // @ts-ignore - Supabase type inference issue
       const { data: records, error } = await supabase
         .from("patient_records")
@@ -146,11 +147,11 @@ export async function POST(request: NextRequest) {
 
     // Check if user is admin
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessPatientRecords = canAccessSection(userRole, "patient_records");
 
-    // Only admins can create records for other users
+    // Only patient-records staff can create records for other users.
     const targetUserId = user_id || user.id;
-    if (targetUserId !== user.id && !isUserAdmin) {
+    if (targetUserId !== user.id && !canAccessPatientRecords) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -171,6 +172,7 @@ export async function POST(request: NextRequest) {
     // Insert new record
     const { data: record, error } = await supabase
       .from("patient_records")
+      // @ts-ignore - Supabase type inference issue
       .insert({
         user_id: targetUserId,
         created_by: user.id,
@@ -244,17 +246,17 @@ export async function PUT(request: NextRequest) {
     const { user_id, ...updateData } = parsed.data;
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessPatientRecords = canAccessSection(userRole, "patient_records");
 
     const targetUserId = user_id || user.id;
 
     // Check permissions
-    if (targetUserId !== user.id && !isUserAdmin) {
+    if (targetUserId !== user.id && !canAccessPatientRecords) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // If user is not an admin, prevent updating medical fields
-    if (!isUserAdmin && targetUserId === user.id) {
+    if (!canAccessPatientRecords && targetUserId === user.id) {
       const medicalFields = [
         'primary_condition',
         'condition_started_date',
@@ -349,10 +351,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     // Only admins can delete records
-    if (!isUserAdmin) {
+    if (!isSystemAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

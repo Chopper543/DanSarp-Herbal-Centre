@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { getUserRole } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessPrescriptions = canAccessSection(userRole, "prescriptions");
 
     let query = supabase.from("prescription_refills").select("*", { count: "exact" });
 
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
 
       // Check permissions
       const typedRefill = refill as { patient_id: string } | null;
-      if (!isUserAdmin && typedRefill?.patient_id !== user.id) {
+      if (!canAccessPrescriptions && typedRefill?.patient_id !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Regular users can only see their own refill requests
-    if (!isUserAdmin) {
+    if (!canAccessPrescriptions) {
       query = query.eq("patient_id", user.id);
     }
 
@@ -185,10 +186,10 @@ export async function PUT(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessPrescriptions = canAccessSection(userRole, "prescriptions");
 
-    // Only admins can approve/reject refill requests
-    if (!isUserAdmin) {
+    // Only clinical staff/admins with prescriptions section access can approve/reject refill requests.
+    if (!canAccessPrescriptions) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

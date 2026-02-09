@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
 import { sendAppointmentConfirmation } from "@/lib/email/resend";
 import { sendAppointmentReminderSMS } from "@/lib/sms/vonage";
@@ -17,7 +17,7 @@ export async function dispatchReminder(
   appointmentId: string,
   preferences: ReminderPreferences
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // @ts-ignore - Supabase type inference issue
   const { data: appointment, error } = await supabase

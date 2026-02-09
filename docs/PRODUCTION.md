@@ -61,8 +61,10 @@ These are recommended for production:
 - `NEXT_PUBLIC_SENTRY_DSN` - Error monitoring
 - `UPSTASH_REDIS_REST_URL` - Rate limiting (required for production)
 - `UPSTASH_REDIS_REST_TOKEN` - Rate limiting token
+- `CRON_SECRET` - Required auth for all cron/maintenance endpoints
 - `RESEND_API_KEY` - Email functionality
 - `PAYSTACK_SECRET_KEY` or `FLUTTERWAVE_SECRET_KEY` - Payment processing
+- `ENABLE_BULLMQ_REMINDERS=true` + `BULLMQ_REDIS_URL` - Enables delayed reminder queue processing
 
 ### 2. Validate Environment Variables
 
@@ -172,6 +174,7 @@ If deploying to a custom server:
    ```bash
    npm install -g pm2
    pm2 start npm --name "dansarp-herbal" -- start
+   pm2 start npm --name "dansarp-reminder-worker" -- run worker:reminders
    pm2 save
    pm2 startup
    ```

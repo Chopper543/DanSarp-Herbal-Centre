@@ -7,6 +7,7 @@ import {
   DEFAULT_ALLOWED_TYPES,
 } from "@/lib/storage/upload";
 import { logger } from "@/lib/monitoring/logger";
+import { scanFileForMalware } from "@/lib/security/malware-scan";
 
 const ALLOWED_EXTENSIONS: Record<StorageBucket, string[]> = {
   "lab-results": ["pdf", "jpeg", "jpg", "png", "doc", "docx"],
@@ -63,7 +64,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    // TODO: integrate AV scanning webhook/service before marking upload successful
+    const scanResult = await scanFileForMalware(file);
+    if (!scanResult.clean) {
+      logger.warn("Malware scan blocked upload", {
+        bucket,
+        fileName: file.name,
+        sha256: scanResult.sha256,
+        reason: scanResult.reason,
+      });
+      return NextResponse.json(
+        { error: "File failed malware scan", details: scanResult.reason || "Unsafe file detected" },
+        { status: 400 }
+      );
+    }
 
     // Generate file path - use user ID as folder if not specified
     const filePath = generateFilePath(file, {

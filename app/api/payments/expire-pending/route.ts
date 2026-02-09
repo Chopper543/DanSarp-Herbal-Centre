@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { paymentService } from "@/lib/payments/payment-service";
+import { logger } from "@/lib/monitoring/logger";
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify this is called by cron job (add secret for security)
+    // Verify this is called by cron job
     const authHeader = request.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+
+    if (!cronSecret) {
+      return NextResponse.json({ error: "Cron secret not configured" }, { status: 500 });
+    }
+
+    if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -25,7 +30,7 @@ export async function POST(request: NextRequest) {
       .not("provider_transaction_id", "is", null);
 
     if (fetchError) {
-      console.error("Error fetching pending payments:", fetchError);
+      logger.error("Error fetching pending payments", fetchError);
       return NextResponse.json(
         { error: fetchError.message },
         { status: 400 }
@@ -211,7 +216,7 @@ export async function POST(request: NextRequest) {
           id: string;
           metadata: any;
         };
-        console.error(`Error verifying payment ${typedPayment.id}:`, error);
+        logger.error(`Error verifying payment ${typedPayment.id}`, error);
         // @ts-ignore - Supabase type inference issue
         await supabase
           .from("payments")
@@ -245,7 +250,7 @@ export async function POST(request: NextRequest) {
       results,
     });
   } catch (error: any) {
-    console.error("Error in expire-pending job:", error);
+    logger.error("Error in expire-pending job", error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
+import { getUserRole, isDoctor, isNurse } from "@/lib/auth/rbac";
+import { canAccessSection } from "@/lib/auth/role-capabilities";
 import { Prescription, HerbFormula } from "@/types";
 import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -35,6 +36,7 @@ const PrescriptionSchema = z
     refills_original: z.number().int().min(0).max(50).optional().nullable(),
     expiry_date: z.string().date().optional().nullable(),
     start_date: z.string().date().optional().nullable(),
+    end_date: z.string().date().optional().nullable(),
     doctor_notes: z.string().max(8000).optional().nullable(),
   })
   .strict();
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const canAccessPrescriptions = canAccessSection(userRole, "prescriptions");
 
     let query = supabase.from("prescriptions").select("*", { count: "exact" });
 
@@ -84,7 +86,11 @@ export async function GET(request: NextRequest) {
 
       // Check permissions
       const typedPrescription = prescription as { patient_id: string; doctor_id: string } | null;
-      if (!isUserAdmin && typedPrescription?.patient_id !== user.id && typedPrescription?.doctor_id !== user.id) {
+      if (
+        !canAccessPrescriptions &&
+        typedPrescription?.patient_id !== user.id &&
+        typedPrescription?.doctor_id !== user.id
+      ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -93,11 +99,11 @@ export async function GET(request: NextRequest) {
 
     // Filter by patient_id if provided (admin/doctor only)
     if (patientId) {
-      if (!isUserAdmin && patientId !== user.id) {
+      if (!canAccessPrescriptions && patientId !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       query = query.eq("patient_id", patientId);
-    } else if (!isUserAdmin) {
+    } else if (!canAccessPrescriptions) {
       // Regular users can only see their own prescriptions
       query = query.eq("patient_id", user.id);
     }
@@ -148,11 +154,11 @@ export async function POST(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
-    // Prescriptions can be created by doctor + appointment_manager + admin (nurse cannot)
+    // Prescriptions can be created by doctors, nurses, and system admins.
     const canCreate = Boolean(
-      isUserAdmin || userRole === "appointment_manager" || isDoctor(userRole)
+      isSystemAdmin || isDoctor(userRole) || isNurse(userRole)
     );
     if (!canCreate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -243,7 +249,8 @@ export async function PUT(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
+    const canUpdateAsNurse = isNurse(userRole);
 
     const body = await request.json();
     const parsed = PrescriptionUpdateSchema.safeParse(body);
@@ -269,7 +276,8 @@ export async function PUT(request: NextRequest) {
 
     // Check permissions
     const typedExistingPrescription = existingPrescription as { doctor_id: string } | null;
-    if (!isUserAdmin && typedExistingPrescription?.doctor_id !== user.id) {
+    const canUpdateOwnAsDoctor = isDoctor(userRole) && typedExistingPrescription?.doctor_id === user.id;
+    if (!isSystemAdmin && !canUpdateAsNurse && !canUpdateOwnAsDoctor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -295,6 +303,7 @@ export async function PUT(request: NextRequest) {
 
     const { data: prescription, error } = await supabase
       .from("prescriptions")
+      // @ts-ignore - Supabase type inference issue
       .update(updatePayload as any)
       .eq("id", id)
       .select()
@@ -335,7 +344,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const userRole = await getUserRole();
-    const isUserAdmin = userRole && isAdmin(userRole);
+    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -356,7 +365,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Only admins can delete prescriptions
-    if (!isUserAdmin) {
+    if (!isSystemAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

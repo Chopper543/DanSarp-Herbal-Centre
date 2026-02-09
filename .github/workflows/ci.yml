@@ -9,6 +9,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      NEXT_PUBLIC_SITE_URL: https://example.com
+      CSRF_SECRET: 12345678901234567890123456789012
+      TWO_FA_ENC_KEY: 12345678901234567890123456789012
+      CRON_SECRET: 12345678901234567890123456789012
 
     steps:
       - uses: actions/checkout@v3
@@ -28,8 +36,8 @@ jobs:
       - name: Run linter
         run: npm run lint
 
+      - name: Run test suite
+        run: npm run test -- --ci --runInBand
+
       - name: Build
         run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

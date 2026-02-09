@@ -4,7 +4,12 @@ import { assertRateLimitConfigured, checkRateLimit, getRateLimitIdentifier } fro
 import { getSecurityHeaders } from "@/lib/security/csp";
 import { createClient } from "@/lib/supabase/server";
 import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/validate-request-size";
-import { requireCsrfToken } from "@/lib/security/csrf";
+import {
+  generateCsrfToken,
+  isCsrfExemptPath,
+  requireCsrfToken,
+  setCsrfTokenCookie,
+} from "@/lib/security/csrf";
 
 const PUBLIC_PATHS = [
   "/login",
@@ -22,10 +27,25 @@ function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
+function finalizeResponse(request: NextRequest, response: NextResponse) {
+  const csrfCookie = request.cookies.get("csrf-token")?.value;
+  if (!csrfCookie) {
+    const token = generateCsrfToken();
+    const cookie = setCsrfTokenCookie(token);
+    response.cookies.set(cookie.name, cookie.value, cookie.options);
+  }
+
+  Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith("/api/");
-  const isWebhook = pathname.startsWith("/api/webhooks/");
+  const isWebhook = isCsrfExemptPath(pathname);
   const isMutatingMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
   let authenticatedUserId: string | null = null;
 
@@ -54,15 +74,18 @@ export async function proxy(request: NextRequest) {
 
         if (requires2fa && !twofaVerified) {
           if (pathname.startsWith("/api/")) {
-            return NextResponse.json(
-              { error: "Two-factor authentication required" },
-              { status: 401 }
+            return finalizeResponse(
+              request,
+              NextResponse.json(
+                { error: "Two-factor authentication required" },
+                { status: 401 }
+              )
             );
           }
           const url = request.nextUrl.clone();
           url.pathname = "/login";
           url.searchParams.set("twofa", "1");
-          return NextResponse.redirect(url);
+          return finalizeResponse(request, NextResponse.redirect(url));
         }
       }
     } catch (error) {
@@ -72,15 +95,18 @@ export async function proxy(request: NextRequest) {
 
   if (!isPublicPath(pathname) && twofaRequired && !twofaVerified) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json(
-        { error: "Two-factor authentication required" },
-        { status: 401 }
+      return finalizeResponse(
+        request,
+        NextResponse.json(
+          { error: "Two-factor authentication required" },
+          { status: 401 }
+        )
       );
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("twofa", "1");
-    return NextResponse.redirect(url);
+    return finalizeResponse(request, NextResponse.redirect(url));
   }
 
   // Apply protective checks to API routes
@@ -92,22 +118,18 @@ export async function proxy(request: NextRequest) {
         getMaxSizeForContentType(request.headers.get("content-type"))
       );
       if (sizeCheck) {
-        Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-          sizeCheck.headers.set(key, value);
-        });
-        return sizeCheck;
+        return finalizeResponse(request, sizeCheck);
       }
 
       const csrf = await requireCsrfToken(request);
       if (!csrf.valid) {
-        const errorResponse = NextResponse.json(
-          { error: csrf.error || "Invalid CSRF token" },
-          { status: 403 }
+        return finalizeResponse(
+          request,
+          NextResponse.json(
+            { error: csrf.error || "Invalid CSRF token" },
+            { status: 403 }
+          )
         );
-        Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-          errorResponse.headers.set(key, value);
-        });
-        return errorResponse;
       }
     }
 
@@ -115,26 +137,22 @@ export async function proxy(request: NextRequest) {
     try {
       assertRateLimitConfigured();
     } catch (error: any) {
-      const misconfig = NextResponse.json(
-        {
-          error: "Rate limiting misconfigured",
-          message: error.message,
-        },
-        { status: 500 }
+      return finalizeResponse(
+        request,
+        NextResponse.json(
+          {
+            error: "Rate limiting misconfigured",
+            message: error.message,
+          },
+          { status: 500 }
+        )
       );
-      Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-        misconfig.headers.set(key, value);
-      });
-      return misconfig;
     }
 
     // Skip rate limiting for webhooks (they have their own verification)
     if (isWebhook) {
       const response = await updateSession(request);
-      Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-        response.headers.set(key, value);
-      });
-      return response;
+      return finalizeResponse(request, response);
     }
 
     let rateLimitUserId = authenticatedUserId;
@@ -159,26 +177,24 @@ export async function proxy(request: NextRequest) {
     const result = await checkRateLimit(identifier, rateLimitPath);
 
     if (!result.success) {
-      const errorResponse = NextResponse.json(
-        {
-          error: "Too many requests",
-          message: "Rate limit exceeded. Please try again later.",
-        },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": result.limit.toString(),
-            "X-RateLimit-Remaining": result.remaining.toString(),
-            "X-RateLimit-Reset": result.reset.toString(),
-            "Retry-After": (result.reset - Math.floor(Date.now() / 1000)).toString(),
+      return finalizeResponse(
+        request,
+        NextResponse.json(
+          {
+            error: "Too many requests",
+            message: "Rate limit exceeded. Please try again later.",
           },
-        }
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit": result.limit.toString(),
+              "X-RateLimit-Remaining": result.remaining.toString(),
+              "X-RateLimit-Reset": result.reset.toString(),
+              "Retry-After": (result.reset - Math.floor(Date.now() / 1000)).toString(),
+            },
+          }
+        )
       );
-      // Add security headers to error response
-      Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-        errorResponse.headers.set(key, value);
-      });
-      return errorResponse;
     }
 
     // Add rate limit headers to response
@@ -186,19 +202,11 @@ export async function proxy(request: NextRequest) {
     response.headers.set("X-RateLimit-Limit", result.limit.toString());
     response.headers.set("X-RateLimit-Remaining", result.remaining.toString());
     response.headers.set("X-RateLimit-Reset", result.reset.toString());
-    // Add security headers
-    Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-      response.headers.set(key, value);
-    });
-    return response;
+    return finalizeResponse(request, response);
   }
 
   const response = await updateSession(request);
-  // Add security headers to all responses
-  Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-    response.headers.set(key, value);
-  });
-  return response;
+  return finalizeResponse(request, response);
 }
 
 export const config = {

@@ -7,6 +7,33 @@ import crypto from "crypto";
 import { logger } from "@/lib/monitoring/logger";
 import { verifyFlutterwaveSignature } from "@/lib/payments/webhook-signature";
 
+async function findPaymentByProviderRefs(
+  supabase: any,
+  references: Array<string | null | undefined>
+) {
+  const seen = new Set<string>();
+  for (const reference of references) {
+    const ref = reference?.toString().trim();
+    if (!ref || seen.has(ref)) {
+      continue;
+    }
+    seen.add(ref);
+
+    // @ts-ignore - Supabase type inference issue
+    const { data } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("provider_transaction_id", ref)
+      .maybeSingle();
+
+    if (data) {
+      return data;
+    }
+  }
+
+  return null;
+}
+
 async function createAppointmentFromPayment(supabase: any, payment: any) {
   // Check if payment has appointment_data in metadata
   const metadata = payment.metadata as any;
@@ -93,11 +120,12 @@ export async function POST(request: NextRequest) {
 
     // Determine transaction id and fetch payment to anchor provider
     const paystackRef = body?.data?.reference;
+    const flutterwaveRef = body?.data?.tx_ref?.toString();
     const flutterwaveId = body?.data?.id?.toString();
     const incomingEvent = body?.event;
     const incomingProviderHeader = request.headers.get("x-provider") || "";
 
-    const providerTransactionId = paystackRef || flutterwaveId;
+    const providerTransactionId = paystackRef || flutterwaveRef || flutterwaveId;
     if (!providerTransactionId) {
       return NextResponse.json({ error: "Missing transaction reference" }, { status: 400 });
     }
@@ -105,11 +133,11 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient();
 
     // Fetch the persisted payment to get trusted provider
-    const { data: payment } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("provider_transaction_id", providerTransactionId)
-      .single();
+    const payment = await findPaymentByProviderRefs(supabase, [
+      providerTransactionId,
+      flutterwaveRef,
+      flutterwaveId,
+    ]);
 
     if (!payment) {
       return NextResponse.json({ error: "Payment not found" }, { status: 404 });
@@ -226,21 +254,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (provider === "flutterwave" && incomingEvent === "charge.completed") {
-      const transactionId = flutterwaveId;
+      const transactionRef = flutterwaveRef || flutterwaveId;
+      if (!transactionRef) {
+        return NextResponse.json(
+          { error: "Missing Flutterwave transaction reference" },
+          { status: 400 }
+        );
+      }
       
       // Verify payment
       const paymentResponse = await paymentService.verifyPayment(
         "flutterwave",
-        transactionId
+        transactionRef
       );
-
-      // Get payment record
-      // @ts-ignore - Supabase type inference issue
-      const { data: payment } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("provider_transaction_id", transactionId)
-        .single();
 
       // Update payment status
       // @ts-ignore - Supabase type inference issue with payments table
@@ -252,15 +278,15 @@ export async function POST(request: NextRequest) {
           metadata: paymentResponse.metadata,
           updated_at: new Date().toISOString(),
         })
-        .eq("provider_transaction_id", transactionId);
+        .eq("id", paymentRecord.id);
 
       // If payment is completed and has appointment_data, create appointment
-      if (payment && paymentResponse.status === 'completed') {
+      if (paymentResponse.status === 'completed') {
         // @ts-ignore - Supabase type inference issue
         const { data: updatedPayment } = await supabase
           .from("payments")
           .select("*, users!payments_user_id_fkey(email)")
-          .eq("provider_transaction_id", transactionId)
+          .eq("id", paymentRecord.id)
           .single();
         
         if (updatedPayment) {
@@ -270,7 +296,7 @@ export async function POST(request: NextRequest) {
             sendEmail({
               to: userEmail,
               subject: "Payment received",
-              html: `<p>Your payment (${paymentResponse.metadata?.reference_code || transactionId}) was completed successfully.</p>`,
+              html: `<p>Your payment (${paymentResponse.metadata?.reference_code || transactionRef}) was completed successfully.</p>`,
             }).catch(() => {});
           }
         }
