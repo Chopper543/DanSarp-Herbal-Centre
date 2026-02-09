@@ -2,6 +2,53 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
 import { ClinicalNote, VitalSigns } from "@/types";
+import { z } from "zod";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { logAuditEvent } from "@/lib/audit/log";
+import { logger } from "@/lib/monitoring/logger";
+
+const requestInfoFrom = (request: NextRequest) => ({
+  ip:
+    request.headers.get("x-forwarded-for")?.split(",")[0] ||
+    request.headers.get("x-real-ip") ||
+    null,
+  userAgent: request.headers.get("user-agent"),
+  path: request.nextUrl.pathname,
+});
+
+const vitalSignsSchema = z
+  .object({
+    temperature: z.number().nullable().optional(),
+    blood_pressure_systolic: z.number().nullable().optional(),
+    blood_pressure_diastolic: z.number().nullable().optional(),
+    heart_rate: z.number().nullable().optional(),
+    respiratory_rate: z.number().nullable().optional(),
+    spo2: z.number().nullable().optional(),
+  })
+  .strict();
+
+const ClinicalNoteSchema = z
+  .object({
+    patient_id: z.string().uuid(),
+    appointment_id: z.string().uuid().optional().nullable(),
+    note_type: z.string().max(50).default("soap"),
+    subjective: z.string().max(8000).optional().nullable(),
+    objective: z.string().max(8000).optional().nullable(),
+    assessment: z.string().max(8000).optional().nullable(),
+    plan: z.string().max(8000).optional().nullable(),
+    vital_signs: vitalSignsSchema.optional(),
+    diagnosis_codes: z.array(z.string().max(50)).max(50).optional().default([]),
+    template_id: z.string().uuid().optional().nullable(),
+    is_template: z.boolean().optional().default(false),
+    attachments: z.array(z.string().url()).max(20).optional().default([]),
+  })
+  .strict();
+
+const ClinicalNoteUpdateSchema = ClinicalNoteSchema.partial()
+  .extend({
+    id: z.string().uuid(),
+  })
+  .strict();
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +79,6 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific note
     if (noteId) {
-      // @ts-ignore
       const { data: note, error } = await supabase
         .from("clinical_notes")
         .select("*")
@@ -99,7 +145,6 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("created_at", { ascending: false });
 
-    // @ts-ignore
     const { data: notes, error, count } = await query;
 
     if (error) {
@@ -146,6 +191,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const parsed = ClinicalNoteSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid clinical note payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
     const {
       patient_id,
       appointment_id,
@@ -159,12 +212,7 @@ export async function POST(request: NextRequest) {
       template_id,
       is_template,
       attachments,
-    } = body;
-
-    // Validation
-    if (!patient_id) {
-      return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
-    }
+    } = parsed.data;
 
     // Create clinical note
     const noteData = {
@@ -172,10 +220,10 @@ export async function POST(request: NextRequest) {
       doctor_id: user.id,
       appointment_id: appointment_id || null,
       note_type: note_type || "soap",
-      subjective: subjective || null,
-      objective: objective || null,
-      assessment: assessment || null,
-      plan: plan || null,
+      subjective: subjective ? sanitizeText(subjective) : null,
+      objective: objective ? sanitizeText(objective) : null,
+      assessment: assessment ? sanitizeText(assessment) : null,
+      plan: plan ? sanitizeText(plan) : null,
       vital_signs: (vital_signs || {}) as VitalSigns,
       diagnosis_codes: diagnosis_codes || [],
       template_id: template_id || null,
@@ -184,17 +232,29 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
 
-    // @ts-ignore
     const { data: note, error } = await supabase
       .from("clinical_notes")
-      // @ts-ignore - Supabase type inference issue
       .insert(noteData as any)
       .select()
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to create clinical note", error);
+      return NextResponse.json({ error: "Unable to create clinical note" }, { status: 400 });
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "create_clinical_note",
+      resourceType: "clinical_note",
+      resourceId: (note as any)?.id,
+      metadata: {
+        patient_id,
+        appointment_id,
+        note_type,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ note }, { status: 201 });
   } catch (error: any) {
@@ -217,14 +277,17 @@ export async function PUT(request: NextRequest) {
     const isUserAdmin = userRole && isAdmin(userRole);
 
     const body = await request.json();
-    const { id, ...updateData } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: "Clinical note ID is required" }, { status: 400 });
+    const parsed = ClinicalNoteUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid clinical note update payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
+    const { id, ...updateData } = parsed.data;
+
     // Check if note exists and user has permission
-    // @ts-ignore
     const { data: existingNote, error: fetchError } = await supabase
       .from("clinical_notes")
       .select("*")
@@ -244,22 +307,37 @@ export async function PUT(request: NextRequest) {
     // Update note
     const updatePayload = {
       ...updateData,
+      subjective: updateData.subjective ? sanitizeText(updateData.subjective) : updateData.subjective ?? null,
+      objective: updateData.objective ? sanitizeText(updateData.objective) : updateData.objective ?? null,
+      assessment: updateData.assessment ? sanitizeText(updateData.assessment) : updateData.assessment ?? null,
+      plan: updateData.plan ? sanitizeText(updateData.plan) : updateData.plan ?? null,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
     const { data: note, error } = await supabase
       .from("clinical_notes")
-      // @ts-ignore - Supabase type inference issue
       .update(updatePayload as any)
       .eq("id", id)
       .select()
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to update clinical note", error);
+      return NextResponse.json({ error: "Unable to update clinical note" }, { status: 400 });
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "update_clinical_note",
+      resourceType: "clinical_note",
+      resourceId: (note as any)?.id,
+      metadata: {
+        patient_id: (typedExistingNote as any)?.patient_id,
+        appointment_id: (typedExistingNote as any)?.appointment_id,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ note }, { status: 200 });
   } catch (error: any) {
@@ -289,7 +367,6 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if note exists
-    // @ts-ignore
     const { data: existingNote, error: fetchError } = await supabase
       .from("clinical_notes")
       .select("*")
@@ -306,12 +383,23 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Hard delete
-    // @ts-ignore
     const { error } = await supabase.from("clinical_notes").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to delete clinical note", error);
+      return NextResponse.json({ error: "Unable to delete clinical note" }, { status: 400 });
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "delete_clinical_note",
+      resourceType: "clinical_note",
+      resourceId: id,
+      metadata: {
+        patient_id: (existingNote as any)?.patient_id,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ message: "Clinical note deleted successfully" }, { status: 200 });
   } catch (error: any) {

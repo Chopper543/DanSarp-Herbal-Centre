@@ -7,12 +7,31 @@ import { GhanaRailsProvider } from "@/lib/payments/providers/ghana-rails";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
 import { logAuditEvent } from "@/lib/audit/log";
-import { PaymentRequestSchema } from "@/lib/validation/api-schemas";
+import { z } from "zod";
+import { logger } from "@/lib/monitoring/logger";
 
 // Register payment providers
 paymentService.registerProvider("paystack", new PaystackProvider());
 paymentService.registerProvider("flutterwave", new FlutterwaveProvider());
 paymentService.registerProvider("custom", new GhanaRailsProvider());
+
+const PaymentRequestSchema = z.object({
+  amount: z.coerce.number().positive(),
+  currency: z.string().min(1).default("GHS"),
+  payment_method: z.string().min(1),
+  appointment_id: z.string().uuid().optional(),
+  provider: z.enum(["paystack", "flutterwave", "custom"]).optional(),
+  appointment_data: z.any().optional(),
+  phone_number: z.string().optional(),
+  bank_name: z.string().optional(),
+  account_number: z.string().optional(),
+  bank_notes: z.string().optional(),
+  // Card fields should be absent; we keep them to explicitly reject
+  card_number: z.string().optional(),
+  card_expiry: z.string().optional(),
+  card_name: z.string().optional(),
+  card_pin: z.string().optional(),
+});
 
 /**
  * Ensures user exists in users table before creating payment
@@ -31,7 +50,7 @@ async function ensureUserExists(supabase: any, authUser: any) {
   }
 
   // User doesn't exist, create it from auth.users data
-  console.log("User not found in users table, creating user record for:", authUser.id);
+  logger.info("User not found in users table, creating user record", { userId: authUser.id });
   
   const { data: newUser, error: createError } = await supabase
     .from("users")
@@ -47,7 +66,7 @@ async function ensureUserExists(supabase: any, authUser: any) {
     .single();
 
   if (createError) {
-    console.error("Failed to create user in users table:", createError);
+    logger.error("Failed to create user in users table", createError);
     // If it's a conflict (user was created between check and insert), try to fetch again
     if (createError.code === '23505') { // Unique violation
       const { data: retryUser } = await supabase
@@ -91,7 +110,7 @@ export async function POST(request: NextRequest) {
     try {
       await ensureUserExists(supabase, user);
     } catch (error: any) {
-      console.error("Error ensuring user exists:", error);
+      logger.error("Error ensuring user exists", error);
       return NextResponse.json(
         { error: "User account setup incomplete. Please try again in a moment." },
         { status: 500 }
@@ -231,6 +250,26 @@ export async function POST(request: NextRequest) {
 
     const paymentResponse = await paymentService.processPayment(selectedProvider, paymentRequest);
 
+    // Idempotency: if provider_transaction_id already recorded, return existing payment
+    if (paymentResponse.provider_transaction_id) {
+      const { data: existingPayment, error: existingPaymentError } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("provider_transaction_id", paymentResponse.provider_transaction_id)
+        .eq("user_id", user.id)
+        .limit(1)
+        .single();
+      if (!existingPaymentError && existingPayment) {
+        return NextResponse.json(
+          {
+            payment: existingPayment,
+            payment_url: paymentResponse.payment_url,
+          },
+          { status: 200 }
+        );
+      }
+    }
+
     // Create payment record
     const { data: payment, error } = await supabase
       .from("payments")
@@ -252,7 +291,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       // Check for foreign key constraint violation
       if (error.message?.includes("foreign key constraint") || error.code === '23503') {
-        console.error("Foreign key constraint violation - user may not exist in users table:", {
+        logger.error("Foreign key constraint violation - user may not exist in users table", {
           userId: user.id,
           error: error.message,
           errorCode: error.code,
@@ -265,17 +304,15 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: "Unable to create payment" }, { status: 400 });
     }
-
-    const paymentRecord = payment as any;
 
     // Audit payment creation (non-blocking)
     await logAuditEvent({
       userId: user.id,
       action: "create_payment",
       resourceType: "payment",
-      resourceId: paymentRecord.id,
+      resourceId: payment.id,
       metadata: {
         amount,
         currency: currency || "GHS",
@@ -292,7 +329,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     // Check for foreign key constraint violations in catch block
     if (error.message?.includes("foreign key constraint") || error.code === '23503') {
-      console.error("Foreign key constraint error in payment creation:", {
+      logger.error("Foreign key constraint error in payment creation", {
         error: error.message,
         errorCode: error.code,
       });
@@ -304,7 +341,7 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    return NextResponse.json({ error: error.message || "An unexpected error occurred" }, { status: 500 });
+    return NextResponse.json({ error: "An unexpected payment error occurred" }, { status: 500 });
   }
 }
 

@@ -6,6 +6,11 @@ interface AuditEvent {
   resourceType: string;
   resourceId?: string | null;
   metadata?: Record<string, any>;
+  requestInfo?: {
+    ip?: string | null;
+    userAgent?: string | null;
+    path?: string | null;
+  };
 }
 
 /**
@@ -21,7 +26,16 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
       action: event.action,
       resource_type: event.resourceType,
       resource_id: event.resourceId || null,
-      metadata: event.metadata || {},
+      metadata: {
+        ...(event.metadata || {}),
+        ...(event.requestInfo
+          ? {
+              request_ip: event.requestInfo.ip || null,
+              request_user_agent: event.requestInfo.userAgent || null,
+              request_path: event.requestInfo.path || null,
+            }
+          : {}),
+      },
     });
 
     if (error) {

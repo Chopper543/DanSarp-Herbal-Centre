@@ -1,0 +1,22 @@
+### Data Retention & Patient Rights
+
+- **Retention defaults (proposed)**:
+  - Clinical notes, lab results, prescriptions, patient_records: retain 7 years from last update unless legal hold.
+  - Audit logs: retain 1 year online, archive to cold storage for 6 years.
+  - Storage attachments (lab/clinical): align to record retention; delete when parent record deleted.
+  - Backups: daily with 30-day retention; weekly with 1-year retention (encrypted at rest).
+- **Deletion workflow (patient request)**:
+  - New endpoints to build: `POST /api/patient-data/export`, `POST /api/patient-data/delete-request`.
+  - Validate requester identity + 2FA; require admin approval for deletion; mark records `pending_deletion`.
+  - Anonymize PHI fields where deletion is unsafe; delete storage objects associated with records.
+  - Log all steps in audit_logs with IP/UA/path.
+- **Export workflow**:
+  - Package patient_records, clinical_notes, lab_results, prescriptions, and storage file links in NDJSON/ZIP.
+  - Throttle via rate limits; expire download URLs after 15 minutes.
+  - Provide checksum and audit entry for export delivery.
+- **Scheduled enforcement (to implement)**:
+  - Cron job to purge expired records + attachments based on retention; skip if legal hold flag set.
+  - Report summary of deletions to privacy officer weekly.
+- **Operational controls**:
+  - Use service account for purge jobs with least privilege.
+  - Store retention configuration in environment (`RETENTION_YEARS`, `RETENTION_BACKUP_DAYS`) with change control.

@@ -2,32 +2,47 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 import { LabResult, TestResult } from "@/types";
-import { sendEmail } from "@/lib/email/resend";
 import { z } from "zod";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { logAuditEvent } from "@/lib/audit/log";
+import { logger } from "@/lib/monitoring/logger";
 
-const LabResultCreateSchema = z.object({
-  patient_id: z.string().uuid(),
-  appointment_id: z.string().uuid().nullable().optional(),
-  test_name: z.string(),
-  test_type: z.string().optional().nullable(),
-  ordered_date: z.string().optional().nullable(),
-  completed_date: z.string().optional().nullable(),
-  results: z.record(z.any()).optional().nullable(),
-  normal_range: z.string().optional().nullable(),
-  units: z.string().optional().nullable(),
-  file_urls: z.array(z.string()).optional().nullable(),
-  status: z
-    .enum(["pending", "in_progress", "completed", "cancelled"])
-    .optional()
-    .nullable(),
-  notes: z.string().optional().nullable(),
-  doctor_notes: z.string().optional().nullable(),
+const requestInfoFrom = (request: NextRequest) => ({
+  ip:
+    request.headers.get("x-forwarded-for")?.split(",")[0] ||
+    request.headers.get("x-real-ip") ||
+    null,
+  userAgent: request.headers.get("user-agent"),
+  path: request.nextUrl.pathname,
 });
 
-const LabResultUpdateSchema = LabResultCreateSchema.extend({
-  id: z.string().uuid(),
-  status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
-});
+const testResultSchema = z
+  .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+  .optional();
+
+const LabResultSchema = z
+  .object({
+    patient_id: z.string().uuid(),
+    appointment_id: z.string().uuid().optional().nullable(),
+    test_name: z.string().min(1).max(200),
+    test_type: z.string().optional().nullable(),
+    ordered_date: z.string().date().optional().nullable(),
+    completed_date: z.string().date().optional().nullable(),
+    results: testResultSchema.default({}),
+    normal_range: z.string().optional().nullable(),
+    units: z.string().optional().nullable(),
+    file_urls: z.array(z.string().url()).max(20).optional().default([]),
+    status: z.string().min(1).max(50).default("pending"),
+    notes: z.string().max(8000).optional().nullable(),
+    doctor_notes: z.string().max(8000).optional().nullable(),
+  })
+  .strict();
+
+const LabResultUpdateSchema = LabResultSchema.partial()
+  .extend({
+    id: z.string().uuid(),
+  })
+  .strict();
 
 export async function GET(request: NextRequest) {
   try {
@@ -58,7 +73,6 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific lab result
     if (labResultId) {
-      // @ts-ignore
       const { data: labResult, error } = await supabase
         .from("lab_results")
         .select("*")
@@ -117,7 +131,6 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("ordered_date", { ascending: false });
 
-    // @ts-ignore
     const { data: labResults, error, count } = await query;
 
     if (error) {
@@ -167,10 +180,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const parsed = LabResultCreateSchema.safeParse(body);
+    const parsed = LabResultSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { error: "Invalid lab result payload", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
@@ -201,12 +214,12 @@ export async function POST(request: NextRequest) {
       ordered_date: ordered_date || new Date().toISOString().split("T")[0],
       completed_date: completed_date || null,
       results: (results || {}) as TestResult,
-      normal_range: normal_range || null,
-      units: units || null,
+      normal_range: normal_range ? sanitizeText(normal_range) : null,
+      units: units ? sanitizeText(units) : null,
       file_urls: file_urls || [],
       status: status || "pending",
-      notes: notes || null,
-      doctor_notes: doctor_notes || null,
+      notes: notes ? sanitizeText(notes) : null,
+      doctor_notes: doctor_notes ? sanitizeText(doctor_notes) : null,
       created_by: user.id,
     };
 
@@ -217,26 +230,22 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to create lab result", error);
+      return NextResponse.json({ error: "Unable to create lab result" }, { status: 400 });
     }
 
-    // Notify patient when results are completed
-    if ((labResult as any)?.status === "completed") {
-      const { data: patient } = await supabase
-        .from("users")
-        .select("email, full_name")
-        .eq("id", patient_id)
-        .single();
-
-      const patientEmail = (patient as { email?: string } | null)?.email;
-      if (patientEmail) {
-        sendEmail({
-          to: patientEmail,
-          subject: "Lab results ready",
-          html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>Your lab results are ready. Please log in to view the details.</p>`,
-        }).catch(() => {});
-      }
-    }
+    await logAuditEvent({
+      userId: user.id,
+      action: "create_lab_result",
+      resourceType: "lab_result",
+      resourceId: (labResult as any)?.id,
+      metadata: {
+        patient_id,
+        appointment_id,
+        test_type,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ labResult }, { status: 201 });
   } catch (error: any) {
@@ -262,7 +271,7 @@ export async function PUT(request: NextRequest) {
     const parsed = LabResultUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { error: "Invalid lab result update payload", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
@@ -289,6 +298,14 @@ export async function PUT(request: NextRequest) {
     // Update lab result
     const updatePayload = {
       ...updateData,
+      normal_range: updateData.normal_range
+        ? sanitizeText(updateData.normal_range)
+        : updateData.normal_range ?? null,
+      units: updateData.units ? sanitizeText(updateData.units) : updateData.units ?? null,
+      notes: updateData.notes ? sanitizeText(updateData.notes) : updateData.notes ?? null,
+      doctor_notes: updateData.doctor_notes
+        ? sanitizeText(updateData.doctor_notes)
+        : updateData.doctor_notes ?? null,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
@@ -301,27 +318,21 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to update lab result", error);
+      return NextResponse.json({ error: "Unable to update lab result" }, { status: 400 });
     }
 
-    // Notify patient when results move to completed
-    const finalStatus = (labResult as any)?.status;
-    if (finalStatus === "completed") {
-      const { data: patient } = await supabase
-        .from("users")
-        .select("email, full_name")
-        .eq("id", existingLabResult.patient_id)
-        .single();
-
-      const patientEmail = (patient as { email?: string } | null)?.email;
-      if (patientEmail) {
-        sendEmail({
-          to: patientEmail,
-          subject: "Lab results ready",
-          html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>Your lab results are now available. Please log in to review them.</p>`,
-        }).catch(() => {});
-      }
-    }
+    await logAuditEvent({
+      userId: user.id,
+      action: "update_lab_result",
+      resourceType: "lab_result",
+      resourceId: (labResult as any)?.id,
+      metadata: {
+        patient_id: (typedExistingLabResult as any)?.patient_id,
+        appointment_id: (typedExistingLabResult as any)?.appointment_id,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ labResult }, { status: 200 });
   } catch (error: any) {
@@ -351,7 +362,6 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if lab result exists
-    // @ts-ignore
     const { data: existingLabResult, error: fetchError } = await supabase
       .from("lab_results")
       .select("*")
@@ -368,12 +378,23 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Hard delete (as per migration policy)
-    // @ts-ignore
     const { error } = await supabase.from("lab_results").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to delete lab result", error);
+      return NextResponse.json({ error: "Unable to delete lab result" }, { status: 400 });
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "delete_lab_result",
+      resourceType: "lab_result",
+      resourceId: id,
+      metadata: {
+        patient_id: (existingLabResult as any)?.patient_id,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ message: "Lab result deleted successfully" }, { status: 200 });
   } catch (error: any) {

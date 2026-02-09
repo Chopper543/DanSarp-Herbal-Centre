@@ -2,42 +2,49 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
 import { Prescription, HerbFormula } from "@/types";
-import { sendEmail } from "@/lib/email/resend";
 import { z } from "zod";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { logAuditEvent } from "@/lib/audit/log";
+import { logger } from "@/lib/monitoring/logger";
 
-const HerbFormulaSchema = z.object({
-  name: z.string(),
-  quantity: z.union([z.string(), z.number()]),
-  unit: z.string(),
-  dosage: z.string(),
+const requestInfoFrom = (request: NextRequest) => ({
+  ip:
+    request.headers.get("x-forwarded-for")?.split(",")[0] ||
+    request.headers.get("x-real-ip") ||
+    null,
+  userAgent: request.headers.get("user-agent"),
+  path: request.nextUrl.pathname,
 });
 
-const PrescriptionCreateSchema = z.object({
-  patient_id: z.string().uuid(),
-  appointment_id: z.string().uuid().nullable().optional(),
-  herbs_formulas: z.array(HerbFormulaSchema).min(1),
-  instructions: z.string().optional().nullable(),
-  duration_days: z.number().int().positive().optional().nullable(),
-  refills_original: z.number().int().nonnegative().optional().nullable(),
-  expiry_date: z.string().optional().nullable(),
-  start_date: z.string().optional().nullable(),
-  doctor_notes: z.string().optional().nullable(),
-});
+const HerbFormulaSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    quantity: z.union([z.number(), z.string()]),
+    unit: z.string().max(50),
+    dosage: z.string().max(200),
+  })
+  .strict();
 
-const PrescriptionUpdateSchema = z.object({
-  id: z.string().uuid(),
-  herbs_formulas: z.array(HerbFormulaSchema).optional(),
-  instructions: z.string().optional().nullable(),
-  duration_days: z.number().int().positive().optional().nullable(),
-  refills_original: z.number().int().nonnegative().optional().nullable(),
-  refills_remaining: z.number().int().nonnegative().optional().nullable(),
-  expiry_date: z.string().optional().nullable(),
-  start_date: z.string().optional().nullable(),
-  doctor_notes: z.string().optional().nullable(),
-  status: z
-    .enum(["active", "completed", "cancelled", "expired"])
-    .optional(),
-});
+const PrescriptionSchema = z
+  .object({
+    patient_id: z.string().uuid(),
+    appointment_id: z.string().uuid().optional().nullable(),
+    herbs_formulas: z.array(HerbFormulaSchema).min(1).max(25),
+    instructions: z.string().max(8000).optional().nullable(),
+    duration_days: z.number().int().positive().optional().nullable(),
+    refills_original: z.number().int().min(0).max(50).optional().nullable(),
+    expiry_date: z.string().date().optional().nullable(),
+    start_date: z.string().date().optional().nullable(),
+    doctor_notes: z.string().max(8000).optional().nullable(),
+  })
+  .strict();
+
+const PrescriptionUpdateSchema = PrescriptionSchema.partial()
+  .extend({
+    id: z.string().uuid(),
+    status: z.string().max(50).optional(),
+  })
+  .strict();
 
 export async function GET(request: NextRequest) {
   try {
@@ -152,10 +159,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const parsed = PrescriptionCreateSchema.safeParse(body);
+    const parsed = PrescriptionSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { error: "Invalid prescription payload", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
@@ -186,7 +193,7 @@ export async function POST(request: NextRequest) {
       doctor_id: user.id,
       appointment_id: appointment_id || null,
       herbs_formulas: herbs_formulas as HerbFormula[],
-      instructions: instructions || null,
+      instructions: instructions ? sanitizeText(instructions) : null,
       duration_days: duration_days || null,
       refills_remaining: refills_original || 0,
       refills_original: refills_original || 0,
@@ -194,7 +201,7 @@ export async function POST(request: NextRequest) {
       start_date: start_date || null,
       end_date,
       status: "active" as const,
-      doctor_notes: doctor_notes || null,
+      doctor_notes: doctor_notes ? sanitizeText(doctor_notes) : null,
       created_by: user.id,
     };
 
@@ -205,24 +212,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to create prescription", error);
+      return NextResponse.json({ error: "Unable to create prescription" }, { status: 400 });
     }
 
-    // Notify patient (fire-and-forget)
-    const { data: patient } = await supabase
-      .from("users")
-      .select("email, full_name")
-      .eq("id", patient_id)
-      .single();
-
-    const patientEmail = (patient as { email?: string } | null)?.email;
-    if (patientEmail) {
-      sendEmail({
-        to: patientEmail,
-        subject: "New prescription available",
-        html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>A new prescription has been issued for you. Please log in to view details.</p>`,
-      }).catch(() => {});
-    }
+    await logAuditEvent({
+      userId: user.id,
+      action: "create_prescription",
+      resourceType: "prescription",
+      resourceId: (prescription as any)?.id,
+      metadata: { patient_id, appointment_id },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ prescription }, { status: 201 });
   } catch (error: any) {
@@ -248,7 +249,7 @@ export async function PUT(request: NextRequest) {
     const parsed = PrescriptionUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { error: "Invalid prescription update payload", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
@@ -282,6 +283,12 @@ export async function PUT(request: NextRequest) {
     // Update prescription
     const updatePayload = {
       ...updateData,
+      instructions: updateData.instructions
+        ? sanitizeText(updateData.instructions)
+        : updateData.instructions ?? null,
+      doctor_notes: updateData.doctor_notes
+        ? sanitizeText(updateData.doctor_notes)
+        : updateData.doctor_notes ?? null,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
@@ -294,24 +301,21 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to update prescription", error);
+      return NextResponse.json({ error: "Unable to update prescription" }, { status: 400 });
     }
 
-    // Notify patient about update (fire-and-forget)
-    const { data: patient } = await supabase
-      .from("users")
-      .select("email, full_name")
-      .eq("id", existingPrescription.patient_id)
-      .single();
-
-    const patientEmail = (patient as { email?: string } | null)?.email;
-    if (patientEmail) {
-      sendEmail({
-        to: patientEmail,
-        subject: "Prescription updated",
-        html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>Your prescription has been updated. Please log in to review the changes.</p>`,
-      }).catch(() => {});
-    }
+    await logAuditEvent({
+      userId: user.id,
+      action: "update_prescription",
+      resourceType: "prescription",
+      resourceId: (prescription as any)?.id,
+      metadata: {
+        patient_id: (typedExistingPrescription as any)?.patient_id,
+        appointment_id: (typedExistingPrescription as any)?.appointment_id,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ prescription }, { status: 200 });
   } catch (error: any) {
@@ -341,7 +345,6 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if prescription exists and user has permission
-    // @ts-ignore
     const { data: existingPrescription, error: fetchError } = await supabase
       .from("prescriptions")
       .select("*")
@@ -362,12 +365,25 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase
       .from("prescriptions")
       // @ts-ignore - Supabase type inference issue
-      .update({ status: "cancelled", updated_by: user.id } as any)
+      .update({ status: "cancelled", updated_by: user.id, updated_at: new Date().toISOString() } as any)
       .eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logger.error("Failed to delete prescription", error);
+      return NextResponse.json({ error: "Unable to delete prescription" }, { status: 400 });
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "delete_prescription",
+      resourceType: "prescription",
+      resourceId: id,
+      metadata: {
+        patient_id: (existingPrescription as any)?.patient_id,
+        appointment_id: (existingPrescription as any)?.appointment_id,
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     return NextResponse.json({ message: "Prescription cancelled successfully" }, { status: 200 });
   } catch (error: any) {

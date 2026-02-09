@@ -96,7 +96,7 @@ export const rateLimitConfigs: Record<string, RateLimitConfig> = {
   "/api/auth": { maxRequests: 5, windowSeconds: 60 },
   "/api/auth/login": { maxRequests: 5, windowSeconds: 60 },
   "/api/auth/signup": { maxRequests: 3, windowSeconds: 60 },
-  "/api/auth/2fa": { maxRequests: 10, windowSeconds: 60 },
+  "/api/auth/2fa": { maxRequests: 6, windowSeconds: 60 },
   
   // Payment endpoints - moderate limits
   "/api/payments": { maxRequests: 10, windowSeconds: 60 },
@@ -105,9 +105,12 @@ export const rateLimitConfigs: Record<string, RateLimitConfig> = {
   // Newsletter - prevent spam
   "/api/newsletter": { maxRequests: 3, windowSeconds: 60 },
 
-  // Clinical notes - higher limit for admin list/search/detail usage
-  "/api/clinical-notes": { maxRequests: 120, windowSeconds: 60 },
-  "/api/clinical-notes/search": { maxRequests: 120, windowSeconds: 60 },
+  // PHI endpoints - tightened limits
+  "/api/clinical-notes": { maxRequests: 60, windowSeconds: 60 },
+  "/api/clinical-notes/search": { maxRequests: 60, windowSeconds: 60 },
+  "/api/lab-results": { maxRequests: 60, windowSeconds: 60 },
+  "/api/prescriptions": { maxRequests: 60, windowSeconds: 60 },
+  "/api/patient-records": { maxRequests: 45, windowSeconds: 60 },
 
   // General API - default limits
   default: { maxRequests: 30, windowSeconds: 60 },

@@ -1,0 +1,26 @@
+### Breach Detection & Response (HIPAA)
+
+- **Detection hooks**: monitor auth failures, 2FA failures, rate-limit blocks, and audit-log anomalies via structured logs (`lib/monitoring/logger`) and send to SIEM (e.g., Datadog/Splunk). Add alerts on:
+  - 5xx spikes on `/api/*`, `/api/auth/*`, `/api/patient-*`, `/api/clinical-notes`, `/api/lab-results`, `/api/prescriptions`
+  - Repeated CSRF failures or 2FA failures > 5 per minute per IP/user
+  - Access to >50 PHI records within 5 minutes
+  - Storage upload failures > 10 per minute
+- **Immediate actions**:
+  - Page on-call (clinical + platform). Freeze affected accounts and rotate Supabase keys/secrets.
+  - Disable affected tokens/providers; revoke sessions via Supabase GoTrue.
+  - Preserve logs and database snapshots; enable query logging for impacted tables.
+- **Notification**:
+  - Notify privacy officer and legal within 1 hour of confirmed incident.
+  - Prepare patient notifications within required HIPAA timelines; include scope, data elements affected, and remediation steps.
+- **Forensics**:
+  - Export audit logs (with IP/UA/path) for impacted resources.
+  - Capture request samples, IPs, user agents; identify initial access vector.
+  - Validate integrity of clinical_notes, lab_results, prescriptions, patient_records.
+- **Containment & eradication**:
+  - Patch vulnerable endpoints; increase rate limits temporarily; enforce 2FA re-checks.
+  - Rotate database passwords, webhook secrets, provider credentials.
+- **Recovery**:
+  - Run backup restore test to clean environment; validate RLS and row counts.
+  - Re-enable services gradually with enhanced monitoring.
+- **Post-incident**:
+  - Run tabletop review; add regression tests; update runbooks and alert thresholds.

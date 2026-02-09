@@ -6,6 +6,18 @@ import {
   generateFilePath,
   DEFAULT_ALLOWED_TYPES,
 } from "@/lib/storage/upload";
+import { logger } from "@/lib/monitoring/logger";
+
+const ALLOWED_EXTENSIONS: Record<StorageBucket, string[]> = {
+  "lab-results": ["pdf", "jpeg", "jpg", "png", "doc", "docx"],
+  "clinical-notes": ["pdf", "jpeg", "jpg", "png", "doc", "docx"],
+  "intake-forms": ["pdf", "jpeg", "jpg", "png", "doc", "docx"],
+};
+
+function hasAllowedExtension(file: File, bucket: StorageBucket): boolean {
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  return ALLOWED_EXTENSIONS[bucket].includes(ext);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +43,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid bucket specified" }, { status: 400 });
     }
 
+    if (!hasAllowedExtension(file, bucket)) {
+      return NextResponse.json({ error: "File extension not allowed" }, { status: 400 });
+    }
+
+    if (folder && !/^[a-zA-Z0-9-_\/]{0,100}$/.test(folder)) {
+      return NextResponse.json({ error: "Invalid folder path" }, { status: 400 });
+    }
+
     // Validate file
     const validation = validateFile(file, {
       bucket,
@@ -42,6 +62,8 @@ export async function POST(request: NextRequest) {
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
+
+    // TODO: integrate AV scanning webhook/service before marking upload successful
 
     // Generate file path - use user ID as folder if not specified
     const filePath = generateFilePath(file, {
@@ -58,8 +80,8 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      console.error("Storage upload error:", uploadError);
-      return NextResponse.json({ error: uploadError.message }, { status: 400 });
+      logger.error("Storage upload error", uploadError);
+      return NextResponse.json({ error: "Upload failed" }, { status: 400 });
     }
 
     // Get public URL
@@ -76,8 +98,8 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Upload error:", error);
-    return NextResponse.json({ error: error.message || "Upload failed" }, { status: 500 });
+    logger.error("Upload error", error);
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }
 
@@ -111,13 +133,13 @@ export async function DELETE(request: NextRequest) {
     const { error: deleteError } = await supabase.storage.from(bucket).remove([path]);
 
     if (deleteError) {
-      console.error("Storage delete error:", deleteError);
-      return NextResponse.json({ error: deleteError.message }, { status: 400 });
+      logger.error("Storage delete error", deleteError);
+      return NextResponse.json({ error: "Delete failed" }, { status: 400 });
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
-    console.error("Delete error:", error);
-    return NextResponse.json({ error: error.message || "Delete failed" }, { status: 500 });
+    logger.error("Delete error", error);
+    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
   }
 }
