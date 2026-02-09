@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { ProfileAvatar } from "./ProfileAvatar";
-import { Bell } from "lucide-react";
 import Link from "next/link";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 
 export function DashboardHeader() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const supabase = createClient();
 
@@ -34,16 +33,6 @@ export function DashboardHeader() {
           const data = await response.json();
           setProfile(data.profile);
         }
-
-        // Fetch unread message count
-        // @ts-ignore - Supabase type inference issue with messages table
-        const { count } = await supabase
-          .from("messages")
-          .select("*", { count: "exact", head: true })
-          .eq("recipient_id", authUser.id)
-          .eq("is_read", false);
-
-        setUnreadCount(count || 0);
       }
     }
 
@@ -59,18 +48,7 @@ export function DashboardHeader() {
 
           {/* Right side - notifications and profile */}
           <div className="flex items-center gap-4">
-            {/* Notifications */}
-            <Link
-              href="/messages"
-              className="relative p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              <Bell className="w-6 h-6" />
-              {unreadCount > 0 && (
-                <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </Link>
+            <NotificationBell />
 
             {/* Profile */}
             <div className="flex items-center gap-3">

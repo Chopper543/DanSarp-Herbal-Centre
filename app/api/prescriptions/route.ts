@@ -2,6 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
 import { Prescription, HerbFormula } from "@/types";
+import { sendEmail } from "@/lib/email/resend";
+import { z } from "zod";
+
+const HerbFormulaSchema = z.object({
+  name: z.string(),
+  quantity: z.union([z.string(), z.number()]),
+  unit: z.string(),
+  dosage: z.string(),
+});
+
+const PrescriptionCreateSchema = z.object({
+  patient_id: z.string().uuid(),
+  appointment_id: z.string().uuid().nullable().optional(),
+  herbs_formulas: z.array(HerbFormulaSchema).min(1),
+  instructions: z.string().optional().nullable(),
+  duration_days: z.number().int().positive().optional().nullable(),
+  refills_original: z.number().int().nonnegative().optional().nullable(),
+  expiry_date: z.string().optional().nullable(),
+  start_date: z.string().optional().nullable(),
+  doctor_notes: z.string().optional().nullable(),
+});
+
+const PrescriptionUpdateSchema = z.object({
+  id: z.string().uuid(),
+  herbs_formulas: z.array(HerbFormulaSchema).optional(),
+  instructions: z.string().optional().nullable(),
+  duration_days: z.number().int().positive().optional().nullable(),
+  refills_original: z.number().int().nonnegative().optional().nullable(),
+  refills_remaining: z.number().int().nonnegative().optional().nullable(),
+  expiry_date: z.string().optional().nullable(),
+  start_date: z.string().optional().nullable(),
+  doctor_notes: z.string().optional().nullable(),
+  status: z
+    .enum(["active", "completed", "cancelled", "expired"])
+    .optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -116,6 +152,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const parsed = PrescriptionCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
     const {
       patient_id,
       appointment_id,
@@ -126,29 +170,7 @@ export async function POST(request: NextRequest) {
       expiry_date,
       start_date,
       doctor_notes,
-    } = body;
-
-    // Validation
-    if (!patient_id) {
-      return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
-    }
-
-    if (!herbs_formulas || !Array.isArray(herbs_formulas) || herbs_formulas.length === 0) {
-      return NextResponse.json(
-        { error: "At least one herb/formula is required" },
-        { status: 400 }
-      );
-    }
-
-    // Validate herb/formula structure
-    for (const herb of herbs_formulas) {
-      if (!herb.name || !herb.quantity || !herb.unit || !herb.dosage) {
-        return NextResponse.json(
-          { error: "Each herb/formula must have name, quantity, unit, and dosage" },
-          { status: 400 }
-        );
-      }
-    }
+    } = parsed.data;
 
     // Calculate end_date if duration_days is provided
     let end_date = null;
@@ -176,16 +198,30 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
 
-    // @ts-ignore
     const { data: prescription, error } = await supabase
       .from("prescriptions")
-      // @ts-ignore - Supabase type inference issue
       .insert(prescriptionData as any)
       .select()
       .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Notify patient (fire-and-forget)
+    const { data: patient } = await supabase
+      .from("users")
+      .select("email, full_name")
+      .eq("id", patient_id)
+      .single();
+
+    const patientEmail = (patient as { email?: string } | null)?.email;
+    if (patientEmail) {
+      sendEmail({
+        to: patientEmail,
+        subject: "New prescription available",
+        html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>A new prescription has been issued for you. Please log in to view details.</p>`,
+      }).catch(() => {});
     }
 
     return NextResponse.json({ prescription }, { status: 201 });
@@ -209,14 +245,17 @@ export async function PUT(request: NextRequest) {
     const isUserAdmin = userRole && isAdmin(userRole);
 
     const body = await request.json();
-    const { id, ...updateData } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: "Prescription ID is required" }, { status: 400 });
+    const parsed = PrescriptionUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
+    const { id, ...updateData } = parsed.data;
+
     // Check if prescription exists and user has permission
-    // @ts-ignore
     const { data: existingPrescription, error: fetchError } = await supabase
       .from("prescriptions")
       .select("*")
@@ -247,10 +286,8 @@ export async function PUT(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
     const { data: prescription, error } = await supabase
       .from("prescriptions")
-      // @ts-ignore - Supabase type inference issue
       .update(updatePayload as any)
       .eq("id", id)
       .select()
@@ -258,6 +295,22 @@ export async function PUT(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Notify patient about update (fire-and-forget)
+    const { data: patient } = await supabase
+      .from("users")
+      .select("email, full_name")
+      .eq("id", existingPrescription.patient_id)
+      .single();
+
+    const patientEmail = (patient as { email?: string } | null)?.email;
+    if (patientEmail) {
+      sendEmail({
+        to: patientEmail,
+        subject: "Prescription updated",
+        html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>Your prescription has been updated. Please log in to review the changes.</p>`,
+      }).catch(() => {});
     }
 
     return NextResponse.json({ prescription }, { status: 200 });

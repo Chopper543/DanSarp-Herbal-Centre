@@ -2,6 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 import { LabResult, TestResult } from "@/types";
+import { sendEmail } from "@/lib/email/resend";
+import { z } from "zod";
+
+const LabResultCreateSchema = z.object({
+  patient_id: z.string().uuid(),
+  appointment_id: z.string().uuid().nullable().optional(),
+  test_name: z.string(),
+  test_type: z.string().optional().nullable(),
+  ordered_date: z.string().optional().nullable(),
+  completed_date: z.string().optional().nullable(),
+  results: z.record(z.any()).optional().nullable(),
+  normal_range: z.string().optional().nullable(),
+  units: z.string().optional().nullable(),
+  file_urls: z.array(z.string()).optional().nullable(),
+  status: z
+    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .optional()
+    .nullable(),
+  notes: z.string().optional().nullable(),
+  doctor_notes: z.string().optional().nullable(),
+});
+
+const LabResultUpdateSchema = LabResultCreateSchema.extend({
+  id: z.string().uuid(),
+  status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -141,6 +167,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const parsed = LabResultCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
     const {
       patient_id,
       appointment_id,
@@ -155,15 +189,7 @@ export async function POST(request: NextRequest) {
       status,
       notes,
       doctor_notes,
-    } = body;
-
-    // Validation
-    if (!patient_id || !test_name) {
-      return NextResponse.json(
-        { error: "Patient ID and test name are required" },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     // Create lab result
     const labResultData = {
@@ -184,16 +210,32 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
 
-    // @ts-ignore
     const { data: labResult, error } = await supabase
       .from("lab_results")
-      // @ts-ignore - Supabase type inference issue
       .insert(labResultData as any)
       .select()
       .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Notify patient when results are completed
+    if ((labResult as any)?.status === "completed") {
+      const { data: patient } = await supabase
+        .from("users")
+        .select("email, full_name")
+        .eq("id", patient_id)
+        .single();
+
+      const patientEmail = (patient as { email?: string } | null)?.email;
+      if (patientEmail) {
+        sendEmail({
+          to: patientEmail,
+          subject: "Lab results ready",
+          html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>Your lab results are ready. Please log in to view the details.</p>`,
+        }).catch(() => {});
+      }
     }
 
     return NextResponse.json({ labResult }, { status: 201 });
@@ -217,14 +259,17 @@ export async function PUT(request: NextRequest) {
     const isUserAdmin = userRole && isAdmin(userRole);
 
     const body = await request.json();
-    const { id, ...updateData } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: "Lab result ID is required" }, { status: 400 });
+    const parsed = LabResultUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
+    const { id, ...updateData } = parsed.data;
+
     // Check if lab result exists and user has permission
-    // @ts-ignore
     const { data: existingLabResult, error: fetchError } = await supabase
       .from("lab_results")
       .select("*")
@@ -248,10 +293,8 @@ export async function PUT(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
     const { data: labResult, error } = await supabase
       .from("lab_results")
-      // @ts-ignore - Supabase type inference issue
       .update(updatePayload as any)
       .eq("id", id)
       .select()
@@ -259,6 +302,25 @@ export async function PUT(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Notify patient when results move to completed
+    const finalStatus = (labResult as any)?.status;
+    if (finalStatus === "completed") {
+      const { data: patient } = await supabase
+        .from("users")
+        .select("email, full_name")
+        .eq("id", existingLabResult.patient_id)
+        .single();
+
+      const patientEmail = (patient as { email?: string } | null)?.email;
+      if (patientEmail) {
+        sendEmail({
+          to: patientEmail,
+          subject: "Lab results ready",
+          html: `<p>Hello ${(patient as any)?.full_name || "Patient"},</p><p>Your lab results are now available. Please log in to review them.</p>`,
+        }).catch(() => {});
+      }
     }
 
     return NextResponse.json({ labResult }, { status: 200 });
