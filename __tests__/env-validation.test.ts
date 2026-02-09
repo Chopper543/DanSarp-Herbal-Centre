@@ -18,6 +18,7 @@ describe("validateEnv", () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
     process.env.NEXT_PUBLIC_SITE_URL = "https://dansarpherbal.com";
     process.env.CSRF_SECRET = "12345678901234567890123456789012";
+    process.env.TWO_FA_ENC_KEY = "12345678901234567890123456789012";
     process.env.PAYSTACK_SECRET_KEY = "paystack-key";
     process.env.FLUTTERWAVE_SECRET_KEY = "flw-key";
 

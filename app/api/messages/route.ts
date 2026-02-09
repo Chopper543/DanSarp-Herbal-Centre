@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
-import { z } from "zod";
 import { sendEmail } from "@/lib/email/resend";
-
-const MessageRequestSchema = z
-  .object({
-    recipient_id: z.string().uuid().optional(),
-    department: z.enum(["care_team", "billing", "admin"]).optional(),
-    appointment_id: z.string().uuid().optional(),
-    subject: z.string().min(1).max(200),
-    content: z.string().min(1).max(5000),
-  })
-  .refine(
-    (data) => Boolean(data.recipient_id) || Boolean(data.department),
-    "recipient_id or department is required"
-  );
+import { MessageRequestSchema } from "@/lib/validation/api-schemas";
 
 async function getDepartmentRecipientId(
   supabase: Awaited<ReturnType<typeof createClient>>,

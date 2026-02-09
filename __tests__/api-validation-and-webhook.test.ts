@@ -1,7 +1,10 @@
-import { AppointmentRequestSchema } from "@/app/api/appointments/route";
-import { SubscribeRequestSchema, UpdateSubscriberSchema } from "@/app/api/newsletter/route";
-import { MessageRequestSchema } from "@/app/api/messages/route";
-import { verifyFlutterwaveSignature } from "@/app/api/webhooks/payments/route";
+import {
+  AppointmentRequestSchema,
+  SubscribeRequestSchema,
+  UpdateSubscriberSchema,
+  MessageRequestSchema,
+} from "@/lib/validation/api-schemas";
+import { verifyFlutterwaveSignature } from "@/lib/payments/webhook-signature";
 
 describe("API validation schemas", () => {
   it("accepts a valid appointment request", () => {

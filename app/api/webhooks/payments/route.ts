@@ -5,23 +5,7 @@ import { sendEmail } from "@/lib/email/resend";
 import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/validate-request-size";
 import crypto from "crypto";
 import { logger } from "@/lib/monitoring/logger";
-
-function verifyFlutterwaveSignature(
-  rawBody: string,
-  signature: string | null,
-  secretHash?: string
-): boolean {
-  if (!secretHash) {
-    throw new Error("Webhook secret not configured");
-  }
-
-  if (!signature) {
-    return false;
-  }
-
-  const hash = crypto.createHmac("sha512", secretHash).update(rawBody).digest("hex");
-  return hash === signature;
-}
+import { verifyFlutterwaveSignature } from "@/lib/payments/webhook-signature";
 
 async function createAppointmentFromPayment(supabase: any, payment: any) {
   // Check if payment has appointment_data in metadata

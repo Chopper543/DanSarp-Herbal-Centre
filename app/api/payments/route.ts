@@ -7,30 +7,12 @@ import { GhanaRailsProvider } from "@/lib/payments/providers/ghana-rails";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
 import { logAuditEvent } from "@/lib/audit/log";
-import { z } from "zod";
+import { PaymentRequestSchema } from "@/lib/validation/api-schemas";
 
 // Register payment providers
 paymentService.registerProvider("paystack", new PaystackProvider());
 paymentService.registerProvider("flutterwave", new FlutterwaveProvider());
 paymentService.registerProvider("custom", new GhanaRailsProvider());
-
-const PaymentRequestSchema = z.object({
-  amount: z.coerce.number().positive(),
-  currency: z.string().min(1).default("GHS"),
-  payment_method: z.string().min(1),
-  appointment_id: z.string().uuid().optional(),
-  provider: z.enum(["paystack", "flutterwave", "custom"]).optional(),
-  appointment_data: z.any().optional(),
-  phone_number: z.string().optional(),
-  bank_name: z.string().optional(),
-  account_number: z.string().optional(),
-  bank_notes: z.string().optional(),
-  // Card fields should be absent; we keep them to explicitly reject
-  card_number: z.string().optional(),
-  card_expiry: z.string().optional(),
-  card_name: z.string().optional(),
-  card_pin: z.string().optional(),
-});
 
 /**
  * Ensures user exists in users table before creating payment

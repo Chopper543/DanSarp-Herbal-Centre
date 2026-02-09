@@ -4,16 +4,8 @@ import { sendAppointmentConfirmation } from "@/lib/email/resend";
 import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
-import { z } from "zod";
+import { AppointmentRequestSchema } from "@/lib/validation/api-schemas";
 import { logger } from "@/lib/monitoring/logger";
-
-const AppointmentRequestSchema = z.object({
-  branch_id: z.string().uuid(),
-  appointment_date: z.string().datetime(),
-  treatment_type: z.string().min(1, "treatment_type is required"),
-  notes: z.string().optional().nullable(),
-  payment_id: z.string().uuid(),
-});
 
 export async function POST(request: NextRequest) {
   try {

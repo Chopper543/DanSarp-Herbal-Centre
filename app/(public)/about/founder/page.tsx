@@ -5,16 +5,81 @@ import type { Json } from "@/types/database";
 import Link from "next/link";
 import { Calendar, ArrowLeft } from "lucide-react";
 
+type TeamMember = {
+  name?: string;
+  role?: string;
+  bio?: string;
+  image_url?: string;
+};
+
+function parseTeamMembers(input: Json | null | undefined): TeamMember[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((item): item is TeamMember => typeof item === "object" && item !== null);
+}
+
+function parseCertifications(input: Json | null | undefined): string[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (typeof item === "object" && item !== null && "name" in item) {
+        const name = (item as any).name;
+        const issuer = (item as any).issuer;
+        if (typeof name === "string" && typeof issuer === "string") {
+          return `${name} (${issuer})`;
+        }
+        if (typeof name === "string") return name;
+      }
+      return null;
+    })
+    .filter((v): v is string => Boolean(v));
+}
+
 export default async function FounderPage() {
   const supabase = await createClient();
 
-  // @ts-ignore - Supabase type inference issue with organization_profile table
   const { data: profile } = await supabase
     .from("organization_profile")
-    .select("certifications")
+    .select("mission, vision, values, team_members, certifications")
     .single();
 
-  const certifications = (profile as { certifications?: Json } | null)?.certifications;
+  const typedProfile = (profile as {
+    mission?: string | null;
+    vision?: string | null;
+    values?: string | null;
+    team_members?: Json | null;
+    certifications?: Json | null;
+  } | null) ?? {
+    mission: null,
+    vision: null,
+    values: null,
+    team_members: null,
+    certifications: null,
+  };
+
+  const teamMembers = parseTeamMembers(typedProfile.team_members);
+  const founder =
+    teamMembers.find((member) =>
+      /founder|ceo|chief|director/i.test(`${member.role ?? ""} ${member.name ?? ""}`)
+    ) || teamMembers[0];
+
+  const founderName = founder?.name || "DanSarp Herbal Centre Leadership";
+  const founderRole = founder?.role || "Founder & Clinical Director";
+  const founderBio =
+    founder?.bio ||
+    "DanSarp Herbal Centre was founded to provide safe, patient-centered herbal care that combines trusted traditional practice with disciplined clinical follow-up.";
+
+  const certifications = parseCertifications(typedProfile.certifications);
+  const mission =
+    typedProfile.mission?.trim() ||
+    "To restore health naturally through ethical, evidence-informed herbal care and compassionate patient support.";
+  const vision =
+    typedProfile.vision?.trim() ||
+    "To be the most trusted natural health partner in our communities, known for safety, dignity, and measurable outcomes.";
+  const values =
+    typedProfile.values?.trim() ||
+    "Safety first, personalized care, clinical integrity, and continuous support for every patient journey.";
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -35,17 +100,17 @@ export default async function FounderPage() {
           {/* Hero blurb */}
           <ScrollReveal delay={0.1}>
             <section className="mb-12 text-center">
-              <div className="aspect-square max-w-xs mx-auto mb-6 rounded-2xl bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">
-                Photo placeholder
+              <div className="aspect-square max-w-xs mx-auto mb-6 rounded-2xl bg-primary-50 dark:bg-gray-700 flex items-center justify-center text-primary-700 dark:text-primary-200 text-sm font-semibold px-4">
+                DanSarp Herbal Centre
               </div>
               <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                [Founder / CEO Name]
+                {founderName}
               </h1>
               <p className="text-xl text-primary-600 dark:text-primary-400 font-medium mb-4">
-                Founder & CEO, DanSarp Herbal Centre
+                {founderRole}, DanSarp Herbal Centre
               </p>
               <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-                [Short mission statement: e.g. Dedicated to making natural healing accessible and rooted in evidence and tradition.]
+                {mission}
               </p>
             </section>
           </ScrollReveal>
@@ -57,11 +122,12 @@ export default async function FounderPage() {
                 Credentials
               </h2>
               <p className="text-gray-600 dark:text-gray-400 mb-4">
-                [Education, certifications, and professional affiliations. Example: Trained in traditional herbal medicine and modern integrative health; member of relevant professional bodies.]
+                Our leadership team is committed to regulated practice, clear clinical documentation,
+                and ongoing professional development in integrative and herbal health care.
               </p>
               {certifications && Array.isArray(certifications) && certifications.length > 0 && (
                 <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
-                  {(certifications as string[]).map((item, i) => (
+                  {certifications.map((item, i) => (
                     <li key={i}>{item}</li>
                   ))}
                 </ul>
@@ -77,13 +143,16 @@ export default async function FounderPage() {
               </h2>
               <div className="space-y-4 text-gray-600 dark:text-gray-400">
                 <p className="text-lg">
-                  [Paragraph 1: Why the centre was founded, personal connection to herbal medicine, and the vision at the time.]
+                  DanSarp Herbal Centre began with a clear purpose: to make dependable herbal care
+                  accessible to families who want natural treatment options without compromising on
+                  safety or clinical discipline.
                 </p>
                 <p className="text-lg">
-                  [Paragraph 2: Philosophy of care, commitment to safety and evidence, and the role of tradition and nature in healing.]
+                  {founderBio}
                 </p>
                 <p className="text-lg">
-                  [Paragraph 3: Herbal focus and how DanSarp Herbal Centre aims to support the community and each patient.]
+                  Today, we serve patients through structured consultations, tailored treatment
+                  plans, follow-up monitoring, and practical lifestyle guidance rooted in our values.
                 </p>
               </div>
             </section>
@@ -95,8 +164,12 @@ export default async function FounderPage() {
               <h2 className="text-2xl sm:text-3xl font-semibold mb-4 text-gray-900 dark:text-white">
                 Our Care Approach
               </h2>
-              <p className="text-lg text-gray-600 dark:text-gray-400">
-                [What makes treatments unique: personalized plans, safety-first use of herbs, integration with conventional care, and ongoing support. Adjust to match your practice.]
+              <p className="text-lg text-gray-600 dark:text-gray-400 mb-4">
+                We combine personalized herbal prescriptions, careful risk review, and continuous
+                patient communication so treatment remains safe, practical, and measurable over time.
+              </p>
+              <p className="text-base text-gray-600 dark:text-gray-400">
+                <span className="font-semibold">Core values:</span> {values}
               </p>
             </section>
           </ScrollReveal>

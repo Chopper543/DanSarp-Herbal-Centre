@@ -1,5 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { getRateLimitIdentifier } from "@/lib/security/rate-limit-identifier";
 
 // Initialize Redis client (fallback to in-memory if not configured)
 let redis: Redis | null = null;
@@ -142,12 +143,4 @@ export async function checkRateLimit(
   return await limiter.limit(identifier);
 }
 
-export function getRateLimitIdentifier(request: Request): string {
-  // Try to get IP from headers (Vercel, Cloudflare, etc.)
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  const cfConnectingIp = request.headers.get("cf-connecting-ip");
-  
-  const ip = forwardedFor?.split(",")[0] || realIp || cfConnectingIp || "unknown";
-  return ip.trim();
-}
+export { getRateLimitIdentifier };

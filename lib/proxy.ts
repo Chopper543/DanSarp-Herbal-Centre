@@ -27,6 +27,7 @@ export async function proxy(request: NextRequest) {
   const isApiRoute = pathname.startsWith("/api/");
   const isWebhook = pathname.startsWith("/api/webhooks/");
   const isMutatingMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
+  let authenticatedUserId: string | null = null;
 
   const twofaRequired = request.cookies.get("twofa_required")?.value === "true";
   const twofaVerified = request.cookies.get("twofa_verified")?.value === "true";
@@ -41,6 +42,7 @@ export async function proxy(request: NextRequest) {
         } = await supabase.auth.getUser();
 
         if (user) {
+          authenticatedUserId = user.id;
           // @ts-ignore - Supabase type inference issue
           const { data: userData } = await supabase
             .from("users")
@@ -135,7 +137,20 @@ export async function proxy(request: NextRequest) {
       return response;
     }
 
-    const identifier = getRateLimitIdentifier(request);
+    let rateLimitUserId = authenticatedUserId;
+    if (!rateLimitUserId) {
+      try {
+        const supabase = await createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        rateLimitUserId = user?.id || null;
+      } catch {
+        rateLimitUserId = null;
+      }
+    }
+
+    const identifier = getRateLimitIdentifier(request, rateLimitUserId);
     // Normalize clinical-notes detail routes (e.g. /api/clinical-notes/[id]) so they use the same limit
     const rateLimitPath =
       pathname.startsWith("/api/clinical-notes/") && !pathname.startsWith("/api/clinical-notes/search")
