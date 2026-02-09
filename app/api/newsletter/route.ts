@@ -12,8 +12,6 @@ const UpdateSubscriberSchema = z.object({
   is_active: z.boolean(),
 });
 
-export { SubscribeRequestSchema, UpdateSubscriberSchema };
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

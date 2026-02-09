@@ -6,7 +6,7 @@ import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/valid
 import crypto from "crypto";
 import { logger } from "@/lib/monitoring/logger";
 
-export function verifyFlutterwaveSignature(
+function verifyFlutterwaveSignature(
   rawBody: string,
   signature: string | null,
   secretHash?: string
@@ -131,22 +131,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
-    const provider = payment.provider;
+    const paymentRecord = payment as any;
+    const provider = paymentRecord.provider;
     if (!["paystack", "flutterwave"].includes(provider)) {
       return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });
     }
 
-    // Verify webhook signature (implement based on provider)
-    if (provider === "paystack") {
-      const hash = crypto
-        .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY || "")
-        .update(rawBody)
-        .digest("hex");
+  // Verify webhook signature (must happen before any processing)
+  if (provider === "paystack") {
+    const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
+    if (!paystackSecret) {
+      logger.error("PAYSTACK_SECRET_KEY not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
 
-      if (hash !== request.headers.get("x-paystack-signature")) {
+    const hash = crypto
+      .createHmac("sha512", paystackSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    if (hash !== request.headers.get("x-paystack-signature")) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+  }
+
+  if (provider === "flutterwave") {
+    try {
+      const valid = verifyFlutterwaveSignature(
+        rawBody,
+        request.headers.get("verif-hash"),
+        process.env.FLUTTERWAVE_SECRET_HASH
+      );
+      if (!valid) {
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
     }
+  }
 
     // Process webhook based on provider
     // Handle Paystack events (including mobile money)
@@ -163,7 +188,7 @@ export async function POST(request: NextRequest) {
 
         // Get payment record
         // Update payment status (idempotent-ish: only update if changed)
-        if (paymentResponse.status !== payment.status) {
+        if (paymentResponse.status !== paymentRecord.status) {
           // @ts-ignore - Supabase type inference issue with payments table
           await supabase
             .from("payments")
@@ -213,22 +238,6 @@ export async function POST(request: NextRequest) {
             metadata: body.data,
           })
           .eq("provider_transaction_id", transactionRef);
-      }
-    }
-
-    // Verify Flutterwave webhook signature (mandatory in production)
-    if (provider === "flutterwave") {
-      try {
-        const valid = verifyFlutterwaveSignature(
-          rawBody,
-          request.headers.get("verif-hash"),
-          process.env.FLUTTERWAVE_SECRET_HASH
-        );
-        if (!valid) {
-          return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-        }
-      } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
       }
     }
 

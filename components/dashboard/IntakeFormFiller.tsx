@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { IntakeForm, FormField } from "@/types";
 import { Save, CheckCircle, FileText } from "lucide-react";
+import { useToast } from "@/components/ui/toaster";
 
 interface IntakeFormFillerProps {
   form: IntakeForm;
@@ -25,6 +26,7 @@ export function IntakeFormFiller({
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const { toast } = useToast();
 
   useEffect(() => {
     if (autoSave && Object.keys(formValues).length > 0) {
@@ -163,11 +165,19 @@ export function IntakeFormFiller({
                       setFormValues({ ...formValues, [field.name]: data.url });
                     } else {
                       const error = await response.json();
-                      alert(error.error || "Upload failed. Please try again.");
+                      toast({
+                        title: "Upload failed",
+                        description: error.error || "Please try again.",
+                        variant: "error",
+                      });
                     }
                   } catch (error: any) {
                     console.error("File upload error:", error);
-                    alert(error.message || "Upload failed. Please try again.");
+                    toast({
+                      title: "Upload failed",
+                      description: error.message || "Please try again.",
+                      variant: "error",
+                    });
                   } finally {
                     setUploading({ ...uploading, [field.name]: false });
                   }

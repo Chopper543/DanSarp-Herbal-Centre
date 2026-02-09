@@ -15,8 +15,6 @@ const AppointmentRequestSchema = z.object({
   payment_id: z.string().uuid(),
 });
 
-export { AppointmentRequestSchema };
-
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -273,7 +271,7 @@ export async function GET(request: NextRequest) {
     }
 
     // For admin, annotate each appointment with paid flag (completed payment with matching appointment_id)
-    let annotatedAppointments = appointments;
+    let annotatedAppointments: any[] = appointments || [];
     if (isAdmin && appointments && appointments.length > 0) {
       const appointmentIds = appointments.map((apt: any) => apt.id);
       // @ts-ignore - Supabase type inference issue with payments table

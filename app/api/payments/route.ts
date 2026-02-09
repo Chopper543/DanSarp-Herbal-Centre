@@ -286,12 +286,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    const paymentRecord = payment as any;
+
     // Audit payment creation (non-blocking)
     await logAuditEvent({
       userId: user.id,
       action: "create_payment",
       resourceType: "payment",
-      resourceId: payment.id,
+      resourceId: paymentRecord.id,
       metadata: {
         amount,
         currency: currency || "GHS",

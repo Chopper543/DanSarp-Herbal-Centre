@@ -1,4 +1,10 @@
-import { proxy, config } from "./proxy";
+import { proxy } from "@/lib/proxy";
 
-// Next.js expects a `middleware` export; reuse shared proxy implementation.
-export { proxy as middleware, config };
+// Keep matcher/config local so Next.js can statically analyze middleware config.
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};
+
+export const middleware = proxy;

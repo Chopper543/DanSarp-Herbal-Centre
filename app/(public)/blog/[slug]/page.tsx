@@ -10,6 +10,8 @@ import { generateMetadata as generateSeoMetadata } from "@/lib/seo/metadata";
 import { generateArticleStructuredData } from "@/lib/seo/structured-data";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: {

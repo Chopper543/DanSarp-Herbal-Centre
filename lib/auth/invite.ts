@@ -108,7 +108,7 @@ export async function acceptInvite(token: string, userId: string) {
     .eq("id", userId)
     .single();
 
-  const userEmail = (userRecord?.email || "").toLowerCase();
+  const userEmail = ((userRecord as any)?.email || "").toLowerCase();
   if (!userEmail || userEmail !== invite.email.toLowerCase()) {
     throw new Error("Invite email does not match the signed-in user");
   }

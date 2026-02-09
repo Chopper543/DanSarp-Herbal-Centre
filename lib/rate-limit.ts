@@ -5,11 +5,19 @@ import { Redis } from "@upstash/redis";
 let redis: Redis | null = null;
 let ratelimit: Ratelimit | null = null;
 
-// Initialize rate limiter with Upstash Redis if available
-if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+// Initialize rate limiter with Upstash Redis if available (ignore placeholder values)
+const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const hasRealUpstash =
+  upstashUrl &&
+  upstashToken &&
+  !upstashUrl.startsWith("your_") &&
+  !upstashToken.startsWith("your_");
+
+if (hasRealUpstash) {
   redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    url: upstashUrl!,
+    token: upstashToken!,
   });
 
   ratelimit = new Ratelimit({

@@ -60,13 +60,16 @@ async function fetchUsers() {
 export default async function MessagesManagementPage({
   searchParams,
 }: {
-  searchParams?: { [key: string]: string | string[] | undefined };
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const resolvedSearchParams =
+    (searchParams && (await searchParams)) || undefined;
+
   await requireAuth(["super_admin", "admin"]);
 
-  const page = Math.max(Number(searchParams?.page) || 1, 1);
-  const limit = Math.min(Number(searchParams?.limit) || 20, 100);
-  const unreadOnly = searchParams?.unread_only === "true";
+  const page = Math.max(Number(resolvedSearchParams?.page) || 1, 1);
+  const limit = Math.min(Number(resolvedSearchParams?.limit) || 20, 100);
+  const unreadOnly = resolvedSearchParams?.unread_only === "true";
 
   const [messagesData, usersData] = await Promise.all([
     fetchMessages(page, limit, unreadOnly),

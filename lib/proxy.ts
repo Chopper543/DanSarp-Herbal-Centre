@@ -36,19 +36,19 @@ export async function proxy(request: NextRequest) {
     // Server-side check: if user has 2FA enabled but not verified, block
     try {
       const supabase = await createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (user) {
-        // @ts-ignore - Supabase type inference issue
-        const { data: userData } = await supabase
-          .from("users")
-          .select("two_factor_enabled")
-          .eq("id", user.id)
-          .single();
+        if (user) {
+          // @ts-ignore - Supabase type inference issue
+          const { data: userData } = await supabase
+            .from("users")
+            .select("two_factor_enabled")
+            .eq("id", user.id)
+            .single();
 
-        const requires2fa = userData?.two_factor_enabled === true;
+          const requires2fa = (userData as any)?.two_factor_enabled === true;
 
         if (requires2fa && !twofaVerified) {
           if (pathname.startsWith("/api/")) {

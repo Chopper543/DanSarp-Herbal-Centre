@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function AdminInviteAcceptPage({ params }: { params: { token: string } }) {
+export default function AdminInviteAcceptPage({ params }: { params: any }) {
   const router = useRouter();
-  const { token } = params;
+  const { token } = params || {};
 
   const [status, setStatus] = useState<"idle" | "accepting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);

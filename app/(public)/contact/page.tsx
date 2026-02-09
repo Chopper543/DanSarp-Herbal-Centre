@@ -5,6 +5,7 @@ import { Navbar } from "@/components/features/Navbar";
 import { ScrollReveal } from "@/components/animations/ScrollReveal";
 import { GoogleMap } from "@/components/features/GoogleMap";
 import { SocialLinks } from "@/components/features/SocialLinks";
+import { useToast } from "@/components/ui/toaster";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -13,6 +14,7 @@ export default function ContactPage() {
     message: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
   
   // Default coordinates for Nkawkaw branch (main clinic)
   const defaultCoordinates = { lat: 6.5500, lng: -0.7667 };
@@ -77,12 +79,34 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    // Handle form submission
-    setTimeout(() => {
-      alert("Thank you for your message! We'll get back to you soon.");
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to send message");
+      }
+
+      toast({
+        title: "Message sent",
+        description: "Thank you! We'll get back to you soon.",
+        variant: "success",
+      });
       setFormData({ name: "", email: "", message: "" });
+    } catch (error: any) {
+      toast({
+        title: "Failed to send message",
+        description: error?.message || "Please try again later.",
+        variant: "error",
+      });
+    } finally {
       setSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (

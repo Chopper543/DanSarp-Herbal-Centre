@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { z } from "zod";
+import { sendEmail } from "@/lib/email/resend";
 
 const MessageRequestSchema = z
   .object({
@@ -15,8 +16,6 @@ const MessageRequestSchema = z
     (data) => Boolean(data.recipient_id) || Boolean(data.department),
     "recipient_id or department is required"
   );
-
-export { MessageRequestSchema };
 
 async function getDepartmentRecipientId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -184,11 +183,11 @@ export async function POST(request: NextRequest) {
       // @ts-ignore - Supabase type inference issue with users table
       const { data: recipient } = await supabase
         .from("users")
-      .select("role")
+      .select("role, email, full_name")
         .eq("id", resolvedRecipientId)
         .single();
 
-      const typedRecipient = recipient as { role: string } | null;
+      const typedRecipient = recipient as { role: string; email?: string; full_name?: string } | null;
 
       if (!typedRecipient) {
         return NextResponse.json(
@@ -229,6 +228,24 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // Notify patient when staff replies
+    // Re-fetch recipient to include contact details if not already available
+    const { data: recipientDetails } = await supabase
+      .from("users")
+      .select("role, email, full_name")
+      .eq("id", resolvedRecipientId)
+      .single();
+
+    const recipientRole = (recipientDetails as { role?: string } | null)?.role;
+    const recipientEmail = (recipientDetails as { email?: string } | null)?.email;
+    if (recipientRole === "user" && senderRole !== "user" && recipientEmail) {
+      sendEmail({
+        to: recipientEmail,
+        subject: "You have a new message",
+        html: `<p>Hello ${(recipientDetails as any)?.full_name || "Patient"},</p><p>You have a new message from the care team: <strong>${subject}</strong>. Please log in to reply.</p>`,
+      }).catch(() => {});
     }
 
     return NextResponse.json({ message }, { status: 201 });

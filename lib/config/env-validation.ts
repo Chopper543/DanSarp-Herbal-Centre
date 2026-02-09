@@ -16,6 +16,7 @@ const requiredEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
   NEXT_PUBLIC_SITE_URL: z.string().url("NEXT_PUBLIC_SITE_URL must be a valid URL"),
   CSRF_SECRET: z.string().min(32, "CSRF_SECRET must be at least 32 characters"),
+  TWO_FA_ENC_KEY: z.string().min(32, "TWO_FA_ENC_KEY must be at least 32 characters"),
 });
 
 /**
@@ -60,6 +61,7 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
       CSRF_SECRET: process.env.CSRF_SECRET,
+      TWO_FA_ENC_KEY: process.env.TWO_FA_ENC_KEY,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

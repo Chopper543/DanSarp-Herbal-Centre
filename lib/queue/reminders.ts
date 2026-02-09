@@ -1,4 +1,4 @@
-import { Queue, QueueScheduler, Worker, JobsOptions } from "bullmq";
+import { Queue, Worker, JobsOptions } from "bullmq";
 import { dispatchReminder, ReminderPreferences } from "@/lib/notifications/reminder-dispatch";
 
 type ReminderJobData = {
@@ -20,13 +20,11 @@ function getConnection() {
 }
 
 let reminderQueue: Queue<ReminderJobData> | null = null;
-let reminderScheduler: QueueScheduler | null = null;
 
 function ensureQueue() {
   if (!reminderQueue) {
     const connection = getConnection();
     reminderQueue = new Queue<ReminderJobData>("reminders", { connection });
-    reminderScheduler = new QueueScheduler("reminders", { connection });
   }
   return reminderQueue!;
 }

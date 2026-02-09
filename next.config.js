@@ -12,6 +12,9 @@ const nextConfig = {
   poweredByHeader: false, // Security: remove X-Powered-By header
   productionBrowserSourceMaps: false, // Security: disable source maps in production
 
+  // Ensure build output tracing stays within this workspace (avoids parent lockfile confusion)
+  outputFileTracingRoot: __dirname,
+
   images: {
     remotePatterns: [
       {

@@ -1,18 +1,10 @@
-// Use isomorphic-dompurify which works in both Node.js and browser
-let createDOMPurify: any;
-let purify: any;
+import type * as DOMPurify from "dompurify";
+import { JSDOM } from "jsdom";
 
-if (typeof window === "undefined") {
-  // Server-side: use JSDOM
-  const { JSDOM } = require("jsdom");
-  const window = new JSDOM("").window;
-  createDOMPurify = require("isomorphic-dompurify");
-  purify = createDOMPurify(window as any);
-} else {
-  // Client-side: use browser window
-  createDOMPurify = require("isomorphic-dompurify");
-  purify = createDOMPurify(window);
-}
+// Use isomorphic-dompurify which works in both Node.js and browser
+const createDOMPurify = require("isomorphic-dompurify");
+const windowInstance: Window = typeof window === "undefined" ? new JSDOM("").window : window;
+const purify: DOMPurify.DOMPurifyI = createDOMPurify(windowInstance as unknown as Window);
 
 /**
  * Sanitizes HTML content to prevent XSS attacks

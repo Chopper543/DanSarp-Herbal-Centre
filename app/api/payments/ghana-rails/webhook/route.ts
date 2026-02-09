@@ -45,7 +45,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
-    if (payment.provider !== "custom") {
+    const paymentRecord = payment as any;
+
+    if (paymentRecord.provider !== "custom") {
       return NextResponse.json({ error: "Invalid provider for this webhook" }, { status: 400 });
     }
 
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     // Merge metadata and persist provider status for later verification
     const mergedMetadata = {
-      ...(payment.metadata as Record<string, any> | null | undefined),
+      ...(paymentRecord.metadata as Record<string, any> | null | undefined),
       provider_status: status,
       provider_webhook_received_at: new Date().toISOString(),
       provider_webhook_payload: metadata || {},

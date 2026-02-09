@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { generateMetadata as generateSeoMetadata } from "@/lib/seo/metadata";
 import { generateMedicalBusinessStructuredData } from "@/lib/seo/structured-data";
 import { Analytics } from "@/components/analytics/Analytics";
+import ErrorBoundary from "@/components/errors/ErrorBoundary";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -72,7 +73,9 @@ export default function RootLayout({
           }}
         />
         <ThemeProvider>
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
           <Toaster />
           <Analytics />
         </ThemeProvider>

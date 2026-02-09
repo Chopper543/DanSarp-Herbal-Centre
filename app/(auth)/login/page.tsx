@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,7 +8,7 @@ import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { AlertCircle, Shield, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [twoFactorCode, setTwoFactorCode] = useState("");
@@ -274,5 +274,13 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-center text-gray-600">Loading...</div>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
