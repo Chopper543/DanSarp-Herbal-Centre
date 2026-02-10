@@ -1,16 +1,25 @@
 import { Vonage } from '@vonage/server-sdk';
 import { formatPhoneForSupabase } from '@/lib/utils/phone-format';
 
-if (!process.env.VONAGE_API_KEY || !process.env.VONAGE_API_SECRET) {
-  throw new Error("Vonage credentials are not set");
+let vonageClient: Vonage | null = null;
+
+function getVonageClient(): Vonage {
+  const apiKey = process.env.VONAGE_API_KEY;
+  const apiSecret = process.env.VONAGE_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    throw new Error("Vonage credentials are not set");
+  }
+
+  if (!vonageClient) {
+    vonageClient = new Vonage({
+      apiKey,
+      apiSecret,
+    });
+  }
+
+  return vonageClient;
 }
-
-const vonage = new Vonage({
-  apiKey: process.env.VONAGE_API_KEY,
-  apiSecret: process.env.VONAGE_API_SECRET,
-});
-
-const fromNumber = process.env.VONAGE_FROM_NUMBER || "Vonage APIs";
 
 /**
  * Sends an SMS message using Vonage API
@@ -20,6 +29,9 @@ const fromNumber = process.env.VONAGE_FROM_NUMBER || "Vonage APIs";
  */
 export async function sendSMS(to: string, text: string) {
   try {
+    const vonage = getVonageClient();
+    const fromNumber = process.env.VONAGE_FROM_NUMBER || "Vonage APIs";
+
     // Format phone number to E.164 format for Vonage
     const formattedTo = formatPhoneForSupabase(to, false);
     

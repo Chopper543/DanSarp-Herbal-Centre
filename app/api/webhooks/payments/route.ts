@@ -6,6 +6,12 @@ import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/valid
 import crypto from "crypto";
 import { logger } from "@/lib/monitoring/logger";
 import { verifyFlutterwaveSignature } from "@/lib/payments/webhook-signature";
+import {
+  buildWebhookMetadata,
+  getProcessedWebhookEventIds,
+  resolveWebhookEventId,
+  resolveWebhookEventType,
+} from "@/lib/payments/webhook-idempotency";
 
 async function findPaymentByProviderRefs(
   supabase: any,
@@ -122,8 +128,7 @@ export async function POST(request: NextRequest) {
     const paystackRef = body?.data?.reference;
     const flutterwaveRef = body?.data?.tx_ref?.toString();
     const flutterwaveId = body?.data?.id?.toString();
-    const incomingEvent = body?.event;
-    const incomingProviderHeader = request.headers.get("x-provider") || "";
+    const incomingEvent = resolveWebhookEventType(body);
 
     const providerTransactionId = paystackRef || flutterwaveRef || flutterwaveId;
     if (!providerTransactionId) {
@@ -149,6 +154,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });
     }
 
+    const webhookEventId = resolveWebhookEventId(
+      provider as "paystack" | "flutterwave",
+      body,
+      incomingEvent,
+      providerTransactionId
+    );
+    if (getProcessedWebhookEventIds(paymentRecord.metadata).includes(webhookEventId)) {
+      return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
+    }
+
+    let webhookEventRecorded = false;
+
   // Verify webhook signature (must happen before any processing)
   if (provider === "paystack") {
     const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
@@ -172,9 +189,11 @@ export async function POST(request: NextRequest) {
 
   if (provider === "flutterwave") {
     try {
+      const flutterwaveSignature =
+        request.headers.get("flutterwave-signature") || request.headers.get("verif-hash");
       const valid = verifyFlutterwaveSignature(
         rawBody,
-        request.headers.get("verif-hash"),
+        flutterwaveSignature,
         process.env.FLUTTERWAVE_SECRET_HASH
       );
       if (!valid) {
@@ -207,10 +226,16 @@ export async function POST(request: NextRequest) {
             // @ts-ignore - Supabase type inference issue with payments table
             .update({
               status: paymentResponse.status,
-              metadata: paymentResponse.metadata,
+              metadata: buildWebhookMetadata(
+                paymentResponse.metadata || paymentRecord.metadata,
+                webhookEventId,
+                incomingEvent,
+                { paystack_webhook_payload: body }
+              ),
               updated_at: new Date().toISOString(),
             })
             .eq("provider_transaction_id", transactionRef);
+          webhookEventRecorded = true;
         }
 
         // If payment is completed and has appointment_data, create appointment
@@ -247,9 +272,12 @@ export async function POST(request: NextRequest) {
           // @ts-ignore - Supabase type inference issue with payments table
           .update({
             status: "failed",
-            metadata: body.data,
+            metadata: buildWebhookMetadata(paymentRecord.metadata, webhookEventId, incomingEvent, {
+              paystack_webhook_payload: body.data,
+            }),
           })
           .eq("provider_transaction_id", transactionRef);
+        webhookEventRecorded = true;
       }
     }
 
@@ -275,10 +303,16 @@ export async function POST(request: NextRequest) {
         // @ts-ignore - Supabase type inference issue with payments table
         .update({
           status: paymentResponse.status,
-          metadata: paymentResponse.metadata,
+          metadata: buildWebhookMetadata(
+            paymentResponse.metadata || paymentRecord.metadata,
+            webhookEventId,
+            incomingEvent,
+            { flutterwave_webhook_payload: body }
+          ),
           updated_at: new Date().toISOString(),
         })
         .eq("id", paymentRecord.id);
+      webhookEventRecorded = true;
 
       // If payment is completed and has appointment_data, create appointment
       if (paymentResponse.status === 'completed') {
@@ -301,6 +335,23 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+    }
+
+    // Record idempotency marker even if no payment status transition occurred.
+    if (!webhookEventRecorded) {
+      await supabase
+        .from("payments")
+        // @ts-ignore - Supabase type inference issue with payments table
+        .update({
+          metadata: buildWebhookMetadata(
+            paymentRecord.metadata,
+            webhookEventId,
+            incomingEvent,
+            { webhook_received_without_state_change: true }
+          ),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", paymentRecord.id);
     }
 
     return NextResponse.json({ received: true }, { status: 200 });

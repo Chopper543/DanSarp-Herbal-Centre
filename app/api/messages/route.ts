@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { MessageRequestSchema } from "@/lib/validation/api-schemas";
+import { sanitizeText } from "@/lib/utils/sanitize";
 
 async function getDepartmentRecipientId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -142,9 +143,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { recipient_id, department, appointment_id, subject, content } = parsed.data;
+    const safeSubject = sanitizeText(subject);
 
     // Get sender's role
     const senderRole = await getUserRole();
+    const { data: senderDetails } = await supabase
+      .from("users")
+      .select("full_name, email")
+      .eq("id", user.id)
+      .single();
+    const typedSender = senderDetails as { full_name?: string; email?: string } | null;
 
     let resolvedRecipientId = recipient_id as string | null;
 
@@ -231,7 +239,13 @@ export async function POST(request: NextRequest) {
       sendEmail({
         to: recipientEmail,
         subject: "You have a new message",
-        html: `<p>Hello ${(recipientDetails as any)?.full_name || "Patient"},</p><p>You have a new message from the care team: <strong>${subject}</strong>. Please log in to reply.</p>`,
+        html: `<p>Hello ${(recipientDetails as any)?.full_name || "Patient"},</p><p>You have a new message from the care team: <strong>${safeSubject}</strong>. Please log in to reply.</p>`,
+      }).catch(() => {});
+    } else if (senderRole === "user" && recipientRole && recipientRole !== "user" && recipientEmail) {
+      sendEmail({
+        to: recipientEmail,
+        subject: `New patient message: ${safeSubject}`,
+        html: `<p>Hello,</p><p>You received a new patient message from <strong>${typedSender?.full_name || typedSender?.email || "a patient"}</strong>.</p><p><strong>Subject:</strong> ${safeSubject}</p><p>Please log in to respond.</p>`,
       }).catch(() => {});
     }
 

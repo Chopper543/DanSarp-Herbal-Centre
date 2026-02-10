@@ -38,4 +38,16 @@ describe("validateEnv", () => {
       result.warnings.some((w) => w.includes("Bank transfer details for Ghana rails"))
     ).toBe(true);
   });
+
+  it("runtime env validator requires TWO_FA_ENC_KEY", () => {
+    const { validateEnvOrThrowRuntime } = require("../scripts/runtime-env-validation.js");
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://dansarpherbal.com";
+    process.env.CSRF_SECRET = "12345678901234567890123456789012";
+    delete process.env.TWO_FA_ENC_KEY;
+
+    expect(() => validateEnvOrThrowRuntime({ strict: false })).toThrow(/TWO_FA_ENC_KEY/);
+  });
 });

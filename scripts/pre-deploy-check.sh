@@ -81,17 +81,14 @@ echo ""
 run_check_with_output "Type checking" "npm run type-check"
 
 # 3. Linting
-# Note: Next.js lint has a known issue with spaces in directory names
-# We'll skip this check and note it as a known limitation
-echo "3. Checking linting..."
-echo -e "${YELLOW}⚠ Linting check skipped (Next.js lint has known issues with spaces in directory names)${NC}"
-echo "This is a known Next.js limitation when the project directory contains spaces."
-echo "The code is still valid. You can manually check linting if needed."
-echo ""
+run_check_with_output "Linting" "npm run lint"
 
-# 4. Build check (skip if --skip-build flag is provided)
+# 4. Tests
+run_check_with_output "Tests" "npm test"
+
+# 5. Build check (skip if --skip-build flag is provided)
 if [[ "$1" != "--skip-build" ]]; then
-    echo "4. Testing build..."
+    echo "5. Testing build..."
     if npm run build > /dev/null 2>&1; then
         echo -e "${GREEN}✓ Build successful${NC}"
     else

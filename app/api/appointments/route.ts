@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sendAppointmentConfirmation } from "@/lib/email/resend";
-import { sendAppointmentReminder } from "@/lib/whatsapp/twilio";
+import { sendAppointmentConfirmation, sendEmail } from "@/lib/email/resend";
+import { sendAppointmentReminder, sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
 import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
+import { isAdminAppointmentStatus } from "@/lib/appointments/status";
 import { AppointmentRequestSchema } from "@/lib/validation/api-schemas";
+import { sanitizeText } from "@/lib/utils/sanitize";
+import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
+
+const requestInfoFrom = (request: NextRequest) => ({
+  ip:
+    request.headers.get("x-forwarded-for")?.split(",")[0] ||
+    request.headers.get("x-real-ip") ||
+    null,
+  userAgent: request.headers.get("user-agent"),
+  path: request.nextUrl.pathname,
+});
+
+const ADMIN_APPOINTMENT_ROLES = new Set(["super_admin", "admin", "appointment_manager"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -221,7 +235,15 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const appointmentId = searchParams.get("id");
-    const isAdmin = searchParams.get("admin") === "true";
+    const requestedAdminView = searchParams.get("admin") === "true";
+    const requestedPatientId = searchParams.get("patient_id");
+    const userRole = await getUserRole();
+    const canAdminAppointments = Boolean(userRole && ADMIN_APPOINTMENT_ROLES.has(userRole));
+    const isAdminView = requestedAdminView && canAdminAppointments;
+
+    if (requestedAdminView && !canAdminAppointments) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // If specific appointment ID is requested
     if (appointmentId) {
@@ -238,7 +260,7 @@ export async function GET(request: NextRequest) {
 
       // Verify user owns this appointment (unless admin)
       const typedAppointment = appointment as { user_id: string } | null;
-      if (!isAdmin && typedAppointment && typedAppointment.user_id !== user.id) {
+      if (!isAdminView && typedAppointment && typedAppointment.user_id !== user.id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
       }
 
@@ -247,9 +269,20 @@ export async function GET(request: NextRequest) {
 
     // Get all appointments
     // @ts-ignore - Supabase type inference issue with appointments table
-    let query = supabase.from("appointments").select("*");
+    let query = supabase
+      .from("appointments")
+      .select(
+        isAdminView
+          ? "*, user:users!appointments_user_id_fkey(full_name, email)"
+          : "*"
+      );
 
-    if (!isAdmin) {
+    if (requestedPatientId) {
+      if (!isAdminView && requestedPatientId !== user.id) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      query = query.eq("user_id", requestedPatientId);
+    } else if (!isAdminView) {
       query = query.eq("user_id", user.id);
     }
 
@@ -264,7 +297,7 @@ export async function GET(request: NextRequest) {
 
     // For admin, annotate each appointment with paid flag (completed payment with matching appointment_id)
     let annotatedAppointments: any[] = appointments || [];
-    if (isAdmin && appointments && appointments.length > 0) {
+    if (isAdminView && appointments && appointments.length > 0) {
       const appointmentIds = appointments.map((apt: any) => apt.id);
       // @ts-ignore - Supabase type inference issue with payments table
       const { data: paidPayments } = await supabase
@@ -298,7 +331,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { appointment_id, action, appointment_date, cancellation_reason } = body;
+    const { appointment_id, action, appointment_date, cancellation_reason, status, status_note } = body;
 
     if (!appointment_id || !action) {
       return NextResponse.json(
@@ -319,22 +352,21 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
     }
 
-    const typedAppointment = appointment as { user_id: string; appointment_date: string; treatment_type: string; status: string } | null;
+    const typedAppointment = appointment as {
+      user_id: string;
+      appointment_date: string;
+      treatment_type: string;
+      status: string;
+      notes?: string | null;
+    } | null;
 
     if (!typedAppointment) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
     }
 
     // Verify user owns this appointment (unless admin)
-    // @ts-ignore - Supabase type inference issue
-    const { data: userData } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const typedUserData = userData as { role: string } | null;
-    const isAdmin = typedUserData?.role && ["super_admin", "admin", "appointment_manager"].includes(typedUserData.role);
+    const userRole = await getUserRole();
+    const isAdmin = Boolean(userRole && ADMIN_APPOINTMENT_ROLES.has(userRole));
 
     if (!isAdmin && typedAppointment.user_id !== user.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -343,6 +375,76 @@ export async function PATCH(request: NextRequest) {
     const appointmentDate = new Date(typedAppointment.appointment_date);
     const now = new Date();
     const hoursUntilAppointment = (appointmentDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (action === "update_status") {
+      if (!isAdmin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      if (!status || !isAdminAppointmentStatus(status)) {
+        return NextResponse.json(
+          { error: "status must be one of pending, confirmed, completed, cancelled" },
+          { status: 400 }
+        );
+      }
+
+      const { data: updatedAppointment, error: updateError } = await supabase
+        .from("appointments")
+        // @ts-ignore - Supabase type inference issue
+        .update({
+          status,
+          notes: status_note
+            ? `${typedAppointment.notes || ""}\n\n[Admin status note] ${sanitizeText(status_note)}`.trim()
+            : typedAppointment.notes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", appointment_id)
+        .select()
+        .single();
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 400 });
+      }
+
+      const { data: patient } = await supabase
+        .from("users")
+        .select("full_name, email, phone")
+        .eq("id", typedAppointment.user_id)
+        .single();
+      const typedPatient = patient as { full_name?: string; email?: string; phone?: string | null } | null;
+
+      const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+      const safeStatusNote = status_note ? sanitizeText(status_note) : "";
+      if (typedPatient?.email) {
+        sendEmail({
+          to: typedPatient.email,
+          subject: `Appointment status updated: ${statusLabel}`,
+          html: `<p>Hello ${typedPatient.full_name || "Patient"},</p><p>Your appointment status is now <strong>${statusLabel}</strong>.</p>${safeStatusNote ? `<p>Note from admin: ${safeStatusNote}</p>` : ""}<p>Please log in for details.</p>`,
+        }).catch(() => {});
+      }
+      if (typedPatient?.phone) {
+        sendWhatsAppMessage(
+          typedPatient.phone,
+          `DanSarp update: your appointment status is now ${statusLabel}.${safeStatusNote ? ` Note: ${safeStatusNote}` : ""}`
+        ).catch(() => {});
+      }
+
+      await logAuditEvent({
+        userId: user.id,
+        action: "admin_update_appointment_status",
+        resourceType: "appointment",
+        resourceId: appointment_id,
+        metadata: {
+          previous_status: typedAppointment.status,
+          new_status: status,
+          patient_id: typedAppointment.user_id,
+          note: safeStatusNote || null,
+        },
+        requestInfo: requestInfoFrom(request),
+      });
+
+      return NextResponse.json({ appointment: updatedAppointment }, { status: 200 });
+    }
 
     if (action === "reschedule") {
       if (!appointment_date) {

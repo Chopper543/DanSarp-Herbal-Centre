@@ -78,10 +78,9 @@ VONAGE_FROM_NUMBER=your_vonage_phone_number_or_brand_name
 
 4. Set up Supabase database:
    - Create a new Supabase project
-   - Run the migrations in `supabase/migrations/` in order:
-     - `001_initial_schema.sql`
-     - `002_rls_policies.sql`
-     - `003_triggers.sql`
+   - Open Supabase SQL Editor
+   - Run `supabase/final_schema.sql`
+   - Verify tables, RLS policies, and helper functions are created successfully
 
 5. Run the development server:
 ```bash

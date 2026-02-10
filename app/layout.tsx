@@ -145,11 +145,12 @@ export default function RootLayout({
           }}
         />
         <ThemeProvider>
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
-          <Toaster />
-          <Analytics />
+          <Toaster>
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+            <Analytics />
+          </Toaster>
         </ThemeProvider>
       </body>
     </html>

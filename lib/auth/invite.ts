@@ -1,6 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { UserRole } from "@/types";
 import crypto from "crypto";
+
+type InviteRecord = {
+  id: string;
+  email: string;
+  role: string;
+  token: string;
+  invited_by: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+};
 
 export async function createAdminInvite(
   email: string,
@@ -33,16 +45,7 @@ export async function createAdminInvite(
     throw new Error(`Failed to create invite: ${error.message}`);
   }
 
-  const typedData = data as {
-    id: string;
-    email: string;
-    role: string;
-    token: string;
-    invited_by: string;
-    expires_at: string;
-    accepted_at: string | null;
-    created_at: string;
-  } | null;
+  const typedData = data as InviteRecord | null;
 
   if (!typedData) {
     throw new Error("Failed to create invite: No data returned");
@@ -52,7 +55,9 @@ export async function createAdminInvite(
 }
 
 export async function validateInviteToken(token: string) {
-  const supabase = await createClient();
+  // Invite acceptance must work for non-admin users, so token validation uses
+  // service role instead of auth-scoped RLS.
+  const supabase = createServiceClient();
 
   // @ts-ignore - Supabase type inference issue with admin_invites table
   const { data, error } = await supabase
@@ -65,16 +70,7 @@ export async function validateInviteToken(token: string) {
     return null;
   }
 
-  const typedData = data as {
-    id: string;
-    email: string;
-    role: string;
-    token: string;
-    invited_by: string;
-    expires_at: string;
-    accepted_at: string | null;
-    created_at: string;
-  } | null;
+  const typedData = data as InviteRecord | null;
 
   if (!typedData) {
     return null;
@@ -94,7 +90,8 @@ export async function validateInviteToken(token: string) {
 }
 
 export async function acceptInvite(token: string, userId: string) {
-  const supabase = await createClient();
+  // Accept flow mutates both users and invites and must not depend on caller RLS.
+  const supabase = createServiceClient();
 
   const invite = await validateInviteToken(token);
   if (!invite) {
@@ -136,4 +133,12 @@ export async function acceptInvite(token: string, userId: string) {
   }
 
   return true;
+}
+
+export async function revokeInvite(inviteId: string): Promise<void> {
+  const supabase = createServiceClient();
+  const { error } = await supabase.from("admin_invites").delete().eq("id", inviteId);
+  if (error) {
+    throw new Error(`Failed to revoke invite: ${error.message}`);
+  }
 }

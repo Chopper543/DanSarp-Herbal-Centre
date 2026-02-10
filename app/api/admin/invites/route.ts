@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac";
 import crypto from "crypto";
 import { sendAdminInviteEmail } from "@/lib/email/resend";
+import { revokeInvite } from "@/lib/auth/invite";
 
 export async function GET(request: NextRequest) {
   try {
@@ -182,12 +183,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Invite ID is required" }, { status: 400 });
     }
 
-    // @ts-ignore - Supabase type inference issue
-    const { error } = await supabase.from("admin_invites").delete().eq("id", id);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+    await revokeInvite(id);
 
     return NextResponse.json({ message: "Invite deleted successfully" }, { status: 200 });
   } catch (error: any) {

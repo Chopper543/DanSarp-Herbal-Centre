@@ -7,6 +7,8 @@ import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
+import { sendEmail } from "@/lib/email/resend";
+import { sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
 
 const requestInfoFrom = (request: NextRequest) => ({
   ip:
@@ -44,6 +46,9 @@ const LabResultUpdateSchema = LabResultSchema.partial()
     id: z.string().uuid(),
   })
   .strict();
+
+const isPublishedStatus = (status?: string | null) =>
+  Boolean(status && ["completed", "published", "ready", "released"].includes(status.toLowerCase()));
 
 export async function GET(request: NextRequest) {
   try {
@@ -247,6 +252,28 @@ export async function POST(request: NextRequest) {
       requestInfo: requestInfoFrom(request),
     });
 
+    if (isPublishedStatus(labResultData.status)) {
+      const { data: patient } = await supabase
+        .from("users")
+        .select("full_name, email, phone")
+        .eq("id", patient_id)
+        .single();
+      const typedPatient = patient as { full_name?: string; email?: string; phone?: string | null } | null;
+      if (typedPatient?.email) {
+        sendEmail({
+          to: typedPatient.email,
+          subject: `Lab result available: ${test_name}`,
+          html: `<p>Hello ${typedPatient.full_name || "Patient"},</p><p>Your lab result for <strong>${sanitizeText(test_name)}</strong> is now available in your dashboard.</p>`,
+        }).catch(() => {});
+      }
+      if (typedPatient?.phone) {
+        sendWhatsAppMessage(
+          typedPatient.phone,
+          `DanSarp update: your lab result for ${sanitizeText(test_name)} is now available.`
+        ).catch(() => {});
+      }
+    }
+
     return NextResponse.json({ labResult }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -290,7 +317,13 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check permissions
-    const typedExistingLabResult = existingLabResult as { doctor_id: string } | null;
+    const typedExistingLabResult = existingLabResult as {
+      doctor_id: string;
+      patient_id: string;
+      appointment_id?: string | null;
+      status?: string;
+      test_name?: string;
+    } | null;
     const canUpdateAsNurse = isNurse(userRole);
     const canUpdateOwnAsDoctor = isDoctor(userRole) && typedExistingLabResult?.doctor_id === user.id;
     if (!isSystemAdmin && !canUpdateAsNurse && !canUpdateOwnAsDoctor) {
@@ -336,6 +369,37 @@ export async function PUT(request: NextRequest) {
       },
       requestInfo: requestInfoFrom(request),
     });
+
+    const nextStatus = updateData.status || (labResult as any)?.status;
+    const patientIdForNotification = typedExistingLabResult?.patient_id;
+    if (
+      patientIdForNotification &&
+      isPublishedStatus(nextStatus) &&
+      !isPublishedStatus(typedExistingLabResult?.status)
+    ) {
+      const { data: patient } = await supabase
+        .from("users")
+        .select("full_name, email, phone")
+        .eq("id", patientIdForNotification)
+        .single();
+      const typedPatient = patient as { full_name?: string; email?: string; phone?: string | null } | null;
+      const safeTestName = sanitizeText(
+        ((labResult as any)?.test_name || typedExistingLabResult?.test_name || "your test") as string
+      );
+      if (typedPatient?.email) {
+        sendEmail({
+          to: typedPatient.email,
+          subject: `Lab result available: ${safeTestName}`,
+          html: `<p>Hello ${typedPatient.full_name || "Patient"},</p><p>Your lab result for <strong>${safeTestName}</strong> is now available in your dashboard.</p>`,
+        }).catch(() => {});
+      }
+      if (typedPatient?.phone) {
+        sendWhatsAppMessage(
+          typedPatient.phone,
+          `DanSarp update: your lab result for ${safeTestName} is now available.`
+        ).catch(() => {});
+      }
+    }
 
     return NextResponse.json({ labResult }, { status: 200 });
   } catch (error: any) {

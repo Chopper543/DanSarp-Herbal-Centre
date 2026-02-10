@@ -10,13 +10,16 @@ export class PaystackProvider implements PaymentProvider {
   constructor() {
     this.secretKey = process.env.PAYSTACK_SECRET_KEY || "";
     this.publicKey = process.env.PAYSTACK_PUBLIC_KEY || "";
-    
+  }
+
+  private assertConfigured() {
     if (!this.secretKey || !this.publicKey) {
       throw new Error("Paystack credentials not configured");
     }
   }
 
   async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    this.assertConfigured();
     const cardRequest = request as any;
     
     // Handle Mobile Money payments
@@ -135,6 +138,7 @@ export class PaystackProvider implements PaymentProvider {
   }
 
   async verifyPayment(transactionId: string): Promise<PaymentResponse> {
+    this.assertConfigured();
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${transactionId}`,
       {
@@ -163,6 +167,7 @@ export class PaystackProvider implements PaymentProvider {
   }
 
   async refundPayment(transactionId: string, amount: number): Promise<PaymentResponse> {
+    this.assertConfigured();
     const response = await fetch("https://api.paystack.co/refund", {
       method: "POST",
       headers: {

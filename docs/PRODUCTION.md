@@ -48,6 +48,7 @@ These must be set for production:
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (keep secret!)
 - `NEXT_PUBLIC_SITE_URL` - Your production domain (e.g., https://dansarpherbal.com)
 - `CSRF_SECRET` - Random 32+ character string for CSRF protection
+- `TWO_FA_ENC_KEY` - 32+ character key for 2FA secret encryption/decryption
 
 Generate CSRF secret:
 ```bash
@@ -84,7 +85,7 @@ Apply all database migrations to your production Supabase database:
 
 1. Connect to your Supabase project dashboard
 2. Go to SQL Editor
-3. Run the migration file: `supabase/migrations/000_consolidated_schema.sql`
+3. Run the schema file: `supabase/final_schema.sql`
 4. Verify all tables and policies are created
 
 ### 2. Verify Row Level Security (RLS)

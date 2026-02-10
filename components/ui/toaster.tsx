@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
 interface Toast {
   id: string;
@@ -18,7 +18,11 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
-export function Toaster() {
+interface ToasterProps {
+  children?: ReactNode;
+}
+
+export function Toaster({ children }: ToasterProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const toast = useCallback((newToast: Omit<Toast, "id">) => {
@@ -39,6 +43,7 @@ export function Toaster() {
 
   return (
     <ToastContext.Provider value={{ toasts, toast, dismiss }}>
+      {children}
       <div className="fixed bottom-0 right-0 z-50 flex flex-col gap-2 p-4 max-w-md w-full">
         {toasts.map((toast) => (
           <div

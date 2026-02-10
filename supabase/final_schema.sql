@@ -489,6 +489,9 @@ CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_dat
 CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_transaction_id_unique
+ON payments(provider_transaction_id)
+WHERE provider_transaction_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_blog_posts_status ON blog_posts(status);
 CREATE INDEX IF NOT EXISTS idx_blog_posts_slug ON blog_posts(slug);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
@@ -600,6 +603,36 @@ BEGIN
   -- Legacy broad back-office check (includes non-clinical managers).
   SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
   RETURN user_role_text IN ('super_admin','admin','content_manager','appointment_manager','finance_manager','doctor','nurse');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION is_finance_staff_user()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+STABLE
+AS $$
+DECLARE user_role_text TEXT;
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+  SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
+  RETURN user_role_text IN ('super_admin','admin','finance_manager');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION is_messages_staff_user()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+STABLE
+AS $$
+DECLARE user_role_text TEXT;
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+  SELECT role INTO user_role_text FROM users WHERE id = (select auth.uid());
+  RETURN user_role_text IN ('super_admin','admin','appointment_manager','doctor','nurse');
 END;
 $$;
 
@@ -863,12 +896,12 @@ CREATE POLICY testimonials_select ON testimonials FOR SELECT USING (is_approved 
 CREATE POLICY testimonials_manage ON testimonials FOR ALL USING ((select is_admin_user()));
 
 -- Payments
-CREATE POLICY payments_select ON payments FOR SELECT USING (((select auth.uid()) = user_id) OR (select is_admin_user()));
+CREATE POLICY payments_select ON payments FOR SELECT USING (((select auth.uid()) = user_id) OR (select is_finance_staff_user()));
 CREATE POLICY payments_insert ON payments FOR INSERT WITH CHECK ((select auth.uid()) = user_id);
-CREATE POLICY payments_update_admin ON payments FOR UPDATE USING ((select is_admin_user()));
+CREATE POLICY payments_update_admin ON payments FOR UPDATE USING ((select is_finance_staff_user()));
 
 -- Payment ledger
-CREATE POLICY ledger_select_admin ON payment_ledger FOR SELECT USING ((select is_admin_user()));
+CREATE POLICY ledger_select_admin ON payment_ledger FOR SELECT USING ((select is_finance_staff_user()));
 
 -- Organization profile
 CREATE POLICY org_select ON organization_profile FOR SELECT USING (TRUE);
@@ -886,6 +919,8 @@ CREATE POLICY newsletter_select_admin ON newsletter_subscribers FOR SELECT USING
 -- Admin invites
 CREATE POLICY invites_select_admin ON admin_invites FOR SELECT USING ((select is_super_admin_or_admin()));
 CREATE POLICY invites_insert_super ON admin_invites FOR INSERT WITH CHECK ((select is_super_admin()));
+CREATE POLICY invites_update_super ON admin_invites FOR UPDATE USING ((select is_super_admin())) WITH CHECK ((select is_super_admin()));
+CREATE POLICY invites_delete_super ON admin_invites FOR DELETE USING ((select is_super_admin()));
 
 -- Audit logs
 CREATE POLICY audit_select_admin ON audit_logs FOR SELECT USING ((select is_super_admin_or_admin()));
@@ -906,7 +941,7 @@ CREATE POLICY deletion_requests_update_admin ON deletion_requests
 FOR UPDATE USING ((select is_super_admin_or_admin()));
 
 -- Messages
-CREATE POLICY messages_select ON messages FOR SELECT USING (((select auth.uid()) = sender_id) OR ((select auth.uid()) = recipient_id) OR (select is_admin_user()));
+CREATE POLICY messages_select ON messages FOR SELECT USING (((select auth.uid()) = sender_id) OR ((select auth.uid()) = recipient_id) OR (select is_messages_staff_user()));
 CREATE POLICY messages_insert ON messages FOR INSERT WITH CHECK ((select auth.uid()) = sender_id);
 CREATE POLICY messages_update_recipient ON messages FOR UPDATE USING (((select auth.uid()) = recipient_id));
 

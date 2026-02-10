@@ -3,20 +3,14 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CreditCard, Calendar, MapPin, FileText, AlertCircle, CheckCircle, Phone, Building2, Lock } from "lucide-react";
+import { CreditCard, Calendar, MapPin, FileText, AlertCircle, CheckCircle, Phone, Building2 } from "lucide-react";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac-client";
 import { UserRole } from "@/types";
 import { format } from "date-fns";
 import { 
   validateGhanaPhoneNumber, 
   formatGhanaPhoneNumber,
-  validateCardNumber,
-  formatCardNumber,
-  validateExpiryDate,
-  formatExpiryDate,
-  validateCardPin,
-  validateAccountNumber,
-  getCardType
+  validateAccountNumber
 } from "@/lib/payments/validation";
 
 const BOOKING_FEE = 100; // Compulsory booking fee in GHS
@@ -58,14 +52,6 @@ function AppointmentPaymentContent() {
   const [accountNumber, setAccountNumber] = useState("");
   const [bankTransferNotes, setBankTransferNotes] = useState("");
   const [accountError, setAccountError] = useState("");
-  
-  // Card Payment state
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [cardPin, setCardPin] = useState("");
-  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
-  const [showCardPin, setShowCardPin] = useState(false);
   
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -146,39 +132,6 @@ function AppointmentPaymentContent() {
       setAccountError("");
     }
 
-    // Card Payment validation
-    if (paymentMethod === "card") {
-      const errors: Record<string, string> = {};
-      
-      if (!cardNumber.trim()) {
-        errors.cardNumber = "Card number is required";
-      } else if (!validateCardNumber(cardNumber)) {
-        errors.cardNumber = "Please enter a valid card number";
-      }
-      
-      if (!cardExpiry.trim()) {
-        errors.cardExpiry = "Expiration date is required";
-      } else if (!validateExpiryDate(cardExpiry)) {
-        errors.cardExpiry = "Please enter a valid expiration date (MM/YY)";
-      }
-      
-      if (!cardName.trim()) {
-        errors.cardName = "Name on card is required";
-      }
-      
-      if (!cardPin.trim()) {
-        errors.cardPin = "Card PIN is required";
-      } else if (!validateCardPin(cardPin)) {
-        errors.cardPin = "PIN must be 4-6 digits";
-      }
-      
-      if (Object.keys(errors).length > 0) {
-        setCardErrors(errors);
-        return false;
-      }
-      setCardErrors({});
-    }
-
     return true;
   };
 
@@ -215,7 +168,7 @@ function AppointmentPaymentContent() {
         amount: BOOKING_FEE,
         currency: "GHS",
         payment_method: paymentMethod,
-        provider: paymentMethod === "card" ? "paystack" : "custom",
+        provider: "custom",
         appointment_data: appointmentData,
       };
 
@@ -226,11 +179,6 @@ function AppointmentPaymentContent() {
         paymentBody.bank_name = selectedBank;
         paymentBody.account_number = accountNumber;
         paymentBody.bank_notes = bankTransferNotes;
-      } else if (paymentMethod === "card") {
-        paymentBody.card_number = cardNumber.replace(/\s+/g, '');
-        paymentBody.card_expiry = cardExpiry;
-        paymentBody.card_name = cardName;
-        paymentBody.card_pin = cardPin;
       }
 
       // Process payment for booking fee
@@ -271,7 +219,7 @@ function AppointmentPaymentContent() {
           }
         }
         
-        // If payment URL is returned, redirect to payment gateway (for card payments)
+        // Redirect to provider-hosted payment page if applicable.
         if (paymentData.payment_url) {
           if (paymentData.payment?.id) {
             sessionStorage.setItem('pendingPaymentId', paymentData.payment.id);
@@ -587,19 +535,20 @@ function AppointmentPaymentContent() {
                     // Clear errors when changing method
                     setPhoneError("");
                     setAccountError("");
-                    setCardErrors({});
                   }}
                   required
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="">Select payment method</option>
-                  <option value="card">Card (Paystack)</option>
                   <option value="mtn_momo">MTN Mobile Money</option>
                   <option value="vodafone_cash">Vodafone Cash</option>
                   <option value="airteltigo">AirtelTigo Money</option>
                   <option value="bank_transfer">Bank Transfer</option>
                   <option value="ghqr">GHQR</option>
                 </select>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Card payments are processed only through provider-hosted checkout pages and are not collected on this form.
+                </p>
               </div>
 
               {/* Mobile Money Form */}
@@ -705,146 +654,6 @@ function AppointmentPaymentContent() {
                   <p className="text-sm text-gray-700 dark:text-gray-300">
                     You will receive a GHQR payload after starting payment. Scan it with your banking app to complete the transaction.
                   </p>
-                </div>
-              )}
-
-              {/* Card Payment Form */}
-              {paymentMethod === "card" && (
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
-                  {/* Accepted Cards Info */}
-                  <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-3">
-                    <p className="text-sm font-medium text-primary-800 dark:text-primary-300 mb-2">
-                      Accepted Cards
-                    </p>
-                    <div className="flex flex-wrap gap-2 text-xs text-primary-700 dark:text-primary-400">
-                      <span className="px-2 py-1 bg-white dark:bg-gray-800 rounded">Visa</span>
-                      <span className="px-2 py-1 bg-white dark:bg-gray-800 rounded">Mastercard</span>
-                      <span className="px-2 py-1 bg-white dark:bg-gray-800 rounded">Verve</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                      Card Number <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={cardNumber}
-                      onChange={(e) => {
-                        const formatted = formatCardNumber(e.target.value);
-                        setCardNumber(formatted);
-                        if (cardErrors.cardNumber) {
-                          setCardErrors({ ...cardErrors, cardNumber: "" });
-                        }
-                      }}
-                      placeholder="1234 5678 9012 3456"
-                      maxLength={19}
-                      className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
-                        cardErrors.cardNumber 
-                          ? "border-red-500 dark:border-red-500" 
-                          : "border-gray-300 dark:border-gray-600"
-                      }`}
-                    />
-                    {cardErrors.cardNumber && (
-                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardNumber}</p>
-                    )}
-                    {cardNumber && !cardErrors.cardNumber && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {getCardType(cardNumber)}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                        Expiration Date <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={cardExpiry}
-                        onChange={(e) => {
-                          const formatted = formatExpiryDate(e.target.value);
-                          setCardExpiry(formatted);
-                          if (cardErrors.cardExpiry) {
-                            setCardErrors({ ...cardErrors, cardExpiry: "" });
-                          }
-                        }}
-                        placeholder="MM/YY"
-                        maxLength={5}
-                        className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
-                          cardErrors.cardExpiry 
-                            ? "border-red-500 dark:border-red-500" 
-                            : "border-gray-300 dark:border-gray-600"
-                        }`}
-                      />
-                      {cardErrors.cardExpiry && (
-                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardExpiry}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                        Card PIN <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type={showCardPin ? "text" : "password"}
-                          value={cardPin}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                            setCardPin(value);
-                            if (cardErrors.cardPin) {
-                              setCardErrors({ ...cardErrors, cardPin: "" });
-                            }
-                          }}
-                          placeholder="••••"
-                          maxLength={6}
-                          className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
-                            cardErrors.cardPin 
-                              ? "border-red-500 dark:border-red-500" 
-                              : "border-gray-300 dark:border-gray-600"
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowCardPin(!showCardPin)}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                        >
-                          {showCardPin ? "Hide" : "Show"}
-                        </button>
-                      </div>
-                      {cardErrors.cardPin && (
-                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardPin}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                      Name on Card <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={cardName}
-                      onChange={(e) => {
-                        setCardName(e.target.value);
-                        if (cardErrors.cardName) {
-                          setCardErrors({ ...cardErrors, cardName: "" });
-                        }
-                      }}
-                      placeholder="John Doe"
-                      className={`w-full px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-700 dark:text-white ${
-                        cardErrors.cardName 
-                          ? "border-red-500 dark:border-red-500" 
-                          : "border-gray-300 dark:border-gray-600"
-                      }`}
-                    />
-                    {cardErrors.cardName && (
-                      <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardErrors.cardName}</p>
-                    )}
-                  </div>
                 </div>
               )}
             </div>

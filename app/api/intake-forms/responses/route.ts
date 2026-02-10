@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
+import { sendEmail } from "@/lib/email/resend";
+import { sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
+import { sanitizeText } from "@/lib/utils/sanitize";
 
 export async function GET(request: NextRequest) {
   try {
@@ -192,6 +195,40 @@ export async function PUT(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    const updatedStatus = (response as any)?.status as string | undefined;
+    const previousStatus = typedExistingResponse?.status;
+    const patientId = typedExistingResponse?.patient_id;
+    if (
+      patientId &&
+      isStaffReviewer &&
+      updatedStatus &&
+      ["reviewed", "approved", "rejected"].includes(updatedStatus) &&
+      updatedStatus !== previousStatus
+    ) {
+      const { data: patient } = await supabase
+        .from("users")
+        .select("full_name, email, phone")
+        .eq("id", patientId)
+        .single();
+      const typedPatient = patient as { full_name?: string; email?: string; phone?: string | null } | null;
+      const safeReviewNotes = review_notes ? sanitizeText(review_notes) : "";
+      const statusLabel = updatedStatus.charAt(0).toUpperCase() + updatedStatus.slice(1);
+
+      if (typedPatient?.email) {
+        sendEmail({
+          to: typedPatient.email,
+          subject: `Intake form review update: ${statusLabel}`,
+          html: `<p>Hello ${typedPatient.full_name || "Patient"},</p><p>Your intake form response has been marked as <strong>${statusLabel}</strong>.</p>${safeReviewNotes ? `<p>Reviewer notes: ${safeReviewNotes}</p>` : ""}`,
+        }).catch(() => {});
+      }
+      if (typedPatient?.phone) {
+        sendWhatsAppMessage(
+          typedPatient.phone,
+          `DanSarp update: your intake form response is now ${statusLabel}.${safeReviewNotes ? ` Notes: ${safeReviewNotes}` : ""}`
+        ).catch(() => {});
+      }
     }
 
     return NextResponse.json({ response }, { status: 200 });

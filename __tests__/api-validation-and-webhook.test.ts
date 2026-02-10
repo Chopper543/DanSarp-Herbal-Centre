@@ -64,10 +64,20 @@ describe("Webhook signature verification", () => {
   const body = JSON.stringify({ data: { id: 123 } });
   const secret = "test-secret";
 
-  it("returns true for valid Flutterwave signature", () => {
+  it("returns true for valid Flutterwave signature (sha256 base64)", () => {
+    const crypto = require("crypto");
+    const signature = crypto.createHmac("sha256", secret).update(body).digest("base64");
+    expect(verifyFlutterwaveSignature(body, signature, secret)).toBe(true);
+  });
+
+  it("returns true for legacy Flutterwave signature (sha512 hex)", () => {
     const crypto = require("crypto");
     const signature = crypto.createHmac("sha512", secret).update(body).digest("hex");
     expect(verifyFlutterwaveSignature(body, signature, secret)).toBe(true);
+  });
+
+  it("returns true for legacy plain verif-hash header", () => {
+    expect(verifyFlutterwaveSignature(body, secret, secret)).toBe(true);
   });
 
   it("returns false for invalid Flutterwave signature", () => {

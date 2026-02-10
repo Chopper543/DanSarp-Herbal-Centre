@@ -312,7 +312,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       action: "create_payment",
       resourceType: "payment",
-      resourceId: payment.id,
+      resourceId: (payment as { id?: string } | null)?.id || null,
       metadata: {
         amount,
         currency: currency || "GHS",

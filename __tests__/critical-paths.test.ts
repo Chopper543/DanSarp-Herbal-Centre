@@ -68,6 +68,10 @@ describe("Critical path: RBAC", () => {
     expect(canAccessSection("doctor", "clinical_notes")).toBe(true);
     expect(canAccessSection("finance_manager", "clinical_notes")).toBe(false);
     expect(canAccessSection("user", "dashboard")).toBe(false);
+    expect(canAccessSection("doctor", "patient_records")).toBe(true);
+    expect(canAccessSection("nurse", "lab_results")).toBe(true);
+    expect(canAccessSection("content_manager", "prescriptions")).toBe(false);
+    expect(canAccessSection("finance_manager", "patient_records")).toBe(false);
 
     expect(canAccessPaymentLedger("finance_manager")).toBe(true);
     expect(canAccessPaymentLedger("doctor")).toBe(false);

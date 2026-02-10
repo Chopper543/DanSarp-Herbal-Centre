@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logger } from "@/lib/monitoring/logger";
+import {
+  buildWebhookMetadata,
+  getProcessedWebhookEventIds,
+} from "@/lib/payments/webhook-idempotency";
 
 const WEBHOOK_SECRET = process.env.GHANA_RAILS_WEBHOOK_SECRET;
 const supabaseAdmin = (() => {
@@ -12,6 +16,9 @@ const supabaseAdmin = (() => {
 })();
 
 type GhanaRailsWebhookPayload = {
+  id?: string;
+  event_id?: string;
+  type?: string;
   provider_transaction_id: string;
   status: "pending" | "completed" | "failed" | "processing";
   metadata?: Record<string, any>;
@@ -99,6 +106,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid provider for this webhook" }, { status: 400 });
     }
 
+    const eventType = body.type || "ghana_rails.payment_status";
+    const eventId =
+      body.id?.toString() ||
+      body.event_id?.toString() ||
+      `${eventType}:${provider_transaction_id}:${status}`;
+    const dedupeEventId = `ghana_rails:${eventId}`;
+    if (getProcessedWebhookEventIds(paymentRecord.metadata).includes(dedupeEventId)) {
+      return NextResponse.json({ message: "Duplicate webhook ignored", duplicate: true }, { status: 200 });
+    }
+
     const nextStatus =
       status === "completed"
         ? "completed"
@@ -107,12 +124,16 @@ export async function POST(request: NextRequest) {
           : "pending";
 
     // Merge metadata and persist provider status for later verification
-    const mergedMetadata = {
-      ...(paymentRecord.metadata as Record<string, any> | null | undefined),
-      provider_status: status,
-      provider_webhook_received_at: new Date().toISOString(),
-      provider_webhook_payload: metadata || {},
-    };
+    const mergedMetadata = buildWebhookMetadata(
+      paymentRecord.metadata as Record<string, any> | null | undefined,
+      dedupeEventId,
+      eventType,
+      {
+        provider_status: status,
+        provider_webhook_received_at: new Date().toISOString(),
+        provider_webhook_payload: metadata || {},
+      }
+    );
 
     const { error: updateError } = await supabaseAdmin
       .from("payments")

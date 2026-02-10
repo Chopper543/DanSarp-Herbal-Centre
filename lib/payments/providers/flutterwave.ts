@@ -9,13 +9,16 @@ export class FlutterwaveProvider implements PaymentProvider {
   constructor() {
     this.secretKey = process.env.FLUTTERWAVE_SECRET_KEY || "";
     this.publicKey = process.env.FLUTTERWAVE_PUBLIC_KEY || "";
-    
+  }
+
+  private assertConfigured() {
     if (!this.secretKey || !this.publicKey) {
       throw new Error("Flutterwave credentials not configured");
     }
   }
 
   async processPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    this.assertConfigured();
     const response = await fetch("https://api.flutterwave.com/v3/payments", {
       method: "POST",
       headers: {
@@ -51,6 +54,7 @@ export class FlutterwaveProvider implements PaymentProvider {
   }
 
   async verifyPayment(transactionId: string): Promise<PaymentResponse> {
+    this.assertConfigured();
     const isNumericTransactionId = /^\d+$/.test(transactionId);
     const verifyUrl = isNumericTransactionId
       ? `https://api.flutterwave.com/v3/transactions/${transactionId}/verify`
@@ -79,6 +83,7 @@ export class FlutterwaveProvider implements PaymentProvider {
   }
 
   async refundPayment(transactionId: string, amount: number): Promise<PaymentResponse> {
+    this.assertConfigured();
     const response = await fetch("https://api.flutterwave.com/v3/transactions/refund", {
       method: "POST",
       headers: {

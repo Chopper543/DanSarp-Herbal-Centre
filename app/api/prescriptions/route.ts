@@ -7,6 +7,8 @@ import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
+import { sendEmail } from "@/lib/email/resend";
+import { sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
 
 const requestInfoFrom = (request: NextRequest) => ({
   ip:
@@ -47,6 +49,33 @@ const PrescriptionUpdateSchema = PrescriptionSchema.partial()
     status: z.string().max(50).optional(),
   })
   .strict();
+
+async function notifyPatientPrescriptionUpdate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  patientId: string,
+  subject: string,
+  message: string
+) {
+  const { data: patient } = await supabase
+    .from("users")
+    .select("full_name, email, phone")
+    .eq("id", patientId)
+    .single();
+  const typedPatient = patient as { full_name?: string; email?: string; phone?: string | null } | null;
+  if (typedPatient?.email) {
+    sendEmail({
+      to: typedPatient.email,
+      subject,
+      html: `<p>Hello ${typedPatient.full_name || "Patient"},</p><p>${message}</p><p>Please log in to your dashboard for details.</p>`,
+    }).catch(() => {});
+  }
+  if (typedPatient?.phone) {
+    sendWhatsAppMessage(
+      typedPatient.phone,
+      `DanSarp update: ${message}`
+    ).catch(() => {});
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -231,6 +260,13 @@ export async function POST(request: NextRequest) {
       requestInfo: requestInfoFrom(request),
     });
 
+    await notifyPatientPrescriptionUpdate(
+      supabase,
+      patient_id,
+      "New prescription issued",
+      "A new prescription has been issued for your care plan."
+    );
+
     return NextResponse.json({ prescription }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -275,7 +311,11 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check permissions
-    const typedExistingPrescription = existingPrescription as { doctor_id: string } | null;
+    const typedExistingPrescription = existingPrescription as {
+      doctor_id: string;
+      patient_id: string;
+      status?: string;
+    } | null;
     const canUpdateOwnAsDoctor = isDoctor(userRole) && typedExistingPrescription?.doctor_id === user.id;
     if (!isSystemAdmin && !canUpdateAsNurse && !canUpdateOwnAsDoctor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -325,6 +365,16 @@ export async function PUT(request: NextRequest) {
       },
       requestInfo: requestInfoFrom(request),
     });
+
+    const prescriptionStatus = (updateData.status || (prescription as any)?.status || "updated").toString();
+    if (typedExistingPrescription?.patient_id) {
+      await notifyPatientPrescriptionUpdate(
+        supabase,
+        typedExistingPrescription.patient_id,
+        "Prescription updated",
+        `Your prescription has been updated. Current status: ${sanitizeText(prescriptionStatus)}.`
+      );
+    }
 
     return NextResponse.json({ prescription }, { status: 200 });
   } catch (error: any) {

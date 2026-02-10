@@ -1,37 +1,48 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 export default function AdminAppointmentsPage() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     async function fetchAppointments() {
-      const { appointments } = await fetch("/api/appointments?admin=true").then((res) => res.json());
-      if (appointments) {
-        setAppointments(appointments);
+      try {
+        const response = await fetch("/api/appointments?admin=true");
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to fetch appointments");
+        }
+        setAppointments(data.appointments || []);
+      } catch (error: any) {
+        alert(error?.message || "Failed to fetch appointments");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     fetchAppointments();
   }, []);
 
   const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled") => {
-    const { error } = await supabase
-      .from("appointments")
-      // @ts-ignore - Supabase type inference issue with appointments table
-      .update({ status })
-      .eq("id", id);
-
-    if (!error) {
-      setAppointments((prev) =>
-        prev.map((apt) => (apt.id === id ? { ...apt, status } : apt))
-      );
+    const response = await fetch("/api/appointments", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        appointment_id: id,
+        action: "update_status",
+        status,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      alert(data.error || "Failed to update appointment status");
+      return;
     }
+    setAppointments((prev) =>
+      prev.map((apt) => (apt.id === id ? { ...apt, ...data.appointment } : apt))
+    );
   };
 
   if (loading) {
@@ -72,7 +83,7 @@ export default function AdminAppointmentsPage() {
             {appointments.map((appointment) => (
               <tr key={appointment.id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                  User ID: {appointment.user_id.substring(0, 8)}...
+                  {appointment.user?.full_name || appointment.user?.email || `User ID: ${appointment.user_id.substring(0, 8)}...`}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                   {new Date(appointment.appointment_date).toLocaleString()}

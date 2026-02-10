@@ -1,17 +1,34 @@
 import twilio from "twilio";
 
-if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-  throw new Error("Twilio credentials are not set");
+let twilioClient: ReturnType<typeof twilio> | null = null;
+
+function getTwilioClient(): ReturnType<typeof twilio> {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  if (!accountSid || !authToken) {
+    throw new Error("Twilio credentials are not set");
+  }
+
+  if (!twilioClient) {
+    twilioClient = twilio(accountSid, authToken);
+  }
+
+  return twilioClient;
 }
 
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-const whatsappNumber = process.env.TWILIO_WHATSAPP_NUMBER || "whatsapp:+14155238886";
+function getWhatsAppFromNumber(): string {
+  return process.env.TWILIO_WHATSAPP_FROM || process.env.TWILIO_WHATSAPP_NUMBER || "whatsapp:+14155238886";
+}
 
 export async function sendWhatsAppMessage(
   to: string,
   message: string
 ) {
   try {
+    const client = getTwilioClient();
+    const whatsappNumber = getWhatsAppFromNumber();
+
     // Ensure phone number is in WhatsApp format
     const formattedTo = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
 
