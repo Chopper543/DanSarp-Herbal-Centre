@@ -17,6 +17,8 @@ const requiredEnvSchema = z.object({
   NEXT_PUBLIC_SITE_URL: z.string().url("NEXT_PUBLIC_SITE_URL must be a valid URL"),
   CSRF_SECRET: z.string().min(32, "CSRF_SECRET must be at least 32 characters"),
   TWO_FA_ENC_KEY: z.string().min(32, "TWO_FA_ENC_KEY must be at least 32 characters"),
+  PHI_FIELD_KEY: z.string().min(32, "PHI_FIELD_KEY must be at least 32 characters"),
+  CRON_SECRET: z.string().min(32, "CRON_SECRET must be at least 32 characters"),
 });
 
 /**
@@ -62,7 +64,18 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
       NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
       CSRF_SECRET: process.env.CSRF_SECRET,
       TWO_FA_ENC_KEY: process.env.TWO_FA_ENC_KEY,
+      PHI_FIELD_KEY: process.env.PHI_FIELD_KEY,
+      CRON_SECRET: process.env.CRON_SECRET,
     });
+
+    // Defense-in-depth: ensure encryption keys are not reused across purposes.
+    if (
+      process.env.TWO_FA_ENC_KEY &&
+      process.env.PHI_FIELD_KEY &&
+      process.env.TWO_FA_ENC_KEY === process.env.PHI_FIELD_KEY
+    ) {
+      errors.push("TWO_FA_ENC_KEY and PHI_FIELD_KEY must be distinct values");
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       error.errors.forEach((err) => {
@@ -103,10 +116,6 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
 
     if (!process.env.BULLMQ_REDIS_URL && !process.env.UPSTASH_REDIS_URL && !process.env.REDIS_URL) {
       warnings.push("BullMQ Redis is not configured - background reminders/notifications queue will be disabled");
-    }
-
-    if (!process.env.CRON_SECRET) {
-      warnings.push("CRON_SECRET is not set - cron endpoints cannot be secured");
     }
 
     if (!recommended.RESEND_API_KEY) {
