@@ -17,6 +17,9 @@ const requiredEnvSchema = z.object({
   NEXT_PUBLIC_SITE_URL: z.string().url("NEXT_PUBLIC_SITE_URL must be a valid URL"),
   CSRF_SECRET: z.string().min(32, "CSRF_SECRET must be at least 32 characters"),
   TWO_FA_ENC_KEY: z.string().min(32, "TWO_FA_ENC_KEY must be at least 32 characters"),
+  TWO_FA_SESSION_SECRET: z
+    .string()
+    .min(32, "TWO_FA_SESSION_SECRET must be at least 32 characters"),
   PHI_FIELD_KEY: z.string().min(32, "PHI_FIELD_KEY must be at least 32 characters"),
   CRON_SECRET: z.string().min(32, "CRON_SECRET must be at least 32 characters"),
 });
@@ -64,6 +67,7 @@ export function validateEnv(strict: boolean = false): EnvValidationResult {
       NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
       CSRF_SECRET: process.env.CSRF_SECRET,
       TWO_FA_ENC_KEY: process.env.TWO_FA_ENC_KEY,
+      TWO_FA_SESSION_SECRET: process.env.TWO_FA_SESSION_SECRET,
       PHI_FIELD_KEY: process.env.PHI_FIELD_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
     });

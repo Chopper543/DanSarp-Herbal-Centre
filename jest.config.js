@@ -7,6 +7,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-service-role-key";
 process.env.NEXT_PUBLIC_SITE_URL ||= "https://test.example.com";
 process.env.CSRF_SECRET ||= `csrf-${TEST_PADDING}`;
 process.env.TWO_FA_ENC_KEY ||= `twofa-${TEST_PADDING}`;
+process.env.TWO_FA_SESSION_SECRET ||= `twofa-session-${TEST_PADDING}`;
 process.env.PHI_FIELD_KEY ||= `phi-${TEST_PADDING}`;
 process.env.CRON_SECRET ||= `cron-${TEST_PADDING}`;
 

@@ -9,6 +9,8 @@ import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
 import { internalError } from "@/lib/api/errors";
+import { getSessionId } from "@/lib/auth/session";
+import { issueTwoFactorCookie } from "@/lib/security/two-factor-cookie";
 
 export async function POST(request: NextRequest) {
   try {
@@ -139,14 +141,21 @@ export async function POST(request: NextRequest) {
       message: "2FA has been successfully enabled",
     });
 
-    // Mark session as 2FA-verified
-    response.cookies.set("twofa_verified", "true", {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      secure: true,
-      maxAge: 60 * 60 * 24,
-    });
+    // Enrollment just confirmed a live OTP, so mark the session verified with
+    // the server-signed, session-bound proof (same unforgeable cookie the login
+    // path issues). Bind to the current Supabase session.
+    const sessionId = await getSessionId(supabase);
+    if (!sessionId) {
+      logger.error("2FA enrollment verify: no session id available to bind proof cookie");
+      return internalError(
+        "/api/auth/2fa/verify",
+        new Error("missing session id"),
+        "Failed to establish 2FA session"
+      );
+    }
+    const twofaCookie = issueTwoFactorCookie(user.id, sessionId);
+    response.cookies.set(twofaCookie.name, twofaCookie.value, twofaCookie.options);
+    // Clear the legacy client-set requirement flag (no longer consulted by the gate).
     response.cookies.set("twofa_required", "", {
       httpOnly: true,
       sameSite: "lax",

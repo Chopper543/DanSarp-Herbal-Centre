@@ -28,6 +28,31 @@ Branch: `fix/2fa-server-binding`
   - [ ] Run test green. Manually confirm devtools cookie forging no longer works.
   - **Gate invariant:** the middleware must never read a value the client can write.
 
+  - [x] **Implemented via Option B** (server-signed, session-bound HMAC cookie; custom TOTP kept).
+    New `TWO_FA_SESSION_SECRET` env var (fail-closed). Both `twofa_verified` and
+    `twofa_required` client writes removed; gate derives "must do 2FA" from DB and
+    "satisfied" only from the HMAC. Tests: `__tests__/security-2fa-cookie-forgery.test.ts`.
+
+### Follow-up (NOT this branch) — Option A: migrate to Supabase native MFA
+  - [ ] Replace the custom `otplib` TOTP (encrypted `two_factor_secret` + hashed
+    backup codes in `users`) with Supabase Auth MFA and gate on
+    `getAuthenticatorAssuranceLevel()` (AAL2) in `lib/proxy.ts`. Stronger posture
+    (assurance level lives in the signed JWT, no app-managed proof cookie), but a
+    large migration: forces staff re-enrollment and reworks all four 2FA routes +
+    backup codes. Track separately from B1.
+
+### Follow-up (NOT this branch) — proxy 2FA gate fails OPEN on Supabase errors
+  - [ ] `lib/proxy.ts` wraps the user lookup + 2FA gate in a `try/catch` that
+    swallows errors and lets the request proceed. If `getUser()` or the `users`
+    enrollment query throws (transient Supabase/network error), an enrolled
+    session with no valid proof is NOT gated. **S**
+  - Pre-existing (predates the B1 fix). The B1 change removed the forgeable-cookie
+    fallback that ran in this path, so it no longer trusts client cookies — but it
+    still fails open rather than closed on a DB error.
+  - Fix: on a caught error for a non-public route, fail CLOSED (redirect to
+    /login, 401 for API) instead of proceeding. Weigh against lockout-on-outage;
+    consider a short-lived cache / limited retry so a blip doesn't lock out staff.
+
 ---
 
 ## 2. AUDIT INTEGRITY CLUSTER (on the existing `fix/audit-log-integrity` branch)
