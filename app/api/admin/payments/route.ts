@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth, getUserRole } from "@/lib/auth/rbac";
 import { canAccessSection, canAccessPaymentLedger } from "@/lib/auth/role-capabilities";
+import { badRequest, authAwareError } from "@/lib/api/errors";
 
 export async function GET(_request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(_request: NextRequest) {
       .limit(300);
 
     if (paymentsError) {
-      return NextResponse.json({ error: paymentsError.message }, { status: 400 });
+      return badRequest("/api/admin/payments", paymentsError);
     }
 
     const totalRevenue = (payments || [])
@@ -50,7 +51,7 @@ export async function GET(_request: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(300);
       if (ledgerError) {
-        return NextResponse.json({ error: ledgerError.message }, { status: 400 });
+        return badRequest("/api/admin/payments", ledgerError);
       }
       ledgerEntries = ledger || [];
     }
@@ -64,8 +65,6 @@ export async function GET(_request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    const status =
-      error.message === "Unauthorized" ? 401 : error.message === "Forbidden" ? 403 : 500;
-    return NextResponse.json({ error: error.message || "Failed to load payments" }, { status });
+    return authAwareError("GET /api/admin/payments", error, "Failed to load payments");
   }
 }

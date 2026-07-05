@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { paymentService } from "@/lib/payments/payment-service";
 import { logger } from "@/lib/monitoring/logger";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,10 +32,7 @@ export async function POST(request: NextRequest) {
 
     if (fetchError) {
       logger.error("Error fetching pending payments", fetchError);
-      return NextResponse.json(
-        { error: fetchError.message },
-        { status: 400 }
-      );
+      return badRequest("/api/payments/expire-pending", fetchError);
     }
 
     if (!pendingPayments || pendingPayments.length === 0) {
@@ -71,7 +69,7 @@ export async function POST(request: NextRequest) {
             // @ts-ignore - Supabase type inference issue
             await supabase
               .from("payments")
-              // @ts-ignore
+              // @ts-ignore - supabase type inference
               .update({
                 status: "completed",
                 metadata: {
@@ -95,7 +93,7 @@ export async function POST(request: NextRequest) {
             // @ts-ignore - Supabase type inference issue
             await supabase
               .from("payments")
-              // @ts-ignore
+              // @ts-ignore - supabase type inference
               .update({
                 status: "failed",
                 metadata: {
@@ -251,10 +249,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     logger.error("Error in expire-pending job", error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return internalError("/api/payments/expire-pending", error);
   }
 }
 

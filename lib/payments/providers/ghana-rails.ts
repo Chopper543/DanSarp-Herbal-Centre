@@ -97,7 +97,12 @@ export class GhanaRailsProvider implements PaymentProvider {
   }
 
   async verifyPayment(transactionId: string): Promise<PaymentResponse> {
-    // Without direct provider polling, rely on provider status set via webhook.
+    // Custom Ghana rails have no provider API to poll: status only advances when
+    // the provider POSTs to /api/payments/ghana-rails/webhook. This call is
+    // therefore a no-op that always reports "pending" — callers must treat the
+    // webhook as the source of truth. Payments that never receive a callback are
+    // swept to "expired" by the expire-pending cron, so nothing stays pending
+    // forever.
     return {
       id: transactionId,
       status: "pending",
@@ -110,11 +115,25 @@ export class GhanaRailsProvider implements PaymentProvider {
   }
 
   async refundPayment(transactionId: string, amount: number): Promise<PaymentResponse> {
+    // Custom Ghana rails (mobile money / bank transfer / GHQR) are manual:
+    // refunding requires a human to send money back out-of-band. Returning
+    // "refunded" here would tell finance the money moved when it hasn't — a
+    // dangerous lie. Surface a non-terminal status flagged for manual action so
+    // the refund lands in the refund_requests workflow and is settled (and
+    // marked "refunded") only once a human confirms the payout.
     return {
       id: transactionId,
-      status: "refunded",
+      status: "processing",
       provider_transaction_id: transactionId,
-      metadata: { refund_amount: amount },
+      metadata: {
+        refund_amount: amount,
+        refund_status: "manual_action_required",
+        requires_manual_action: true,
+        instructions:
+          `Send GHS ${amount} back to the customer via the original rail ` +
+          `(mobile money / bank transfer), then mark the refund request processed ` +
+          `with the payout reference.`,
+      },
     };
   }
 

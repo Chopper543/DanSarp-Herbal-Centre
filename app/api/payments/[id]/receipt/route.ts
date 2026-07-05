@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { internalError } from "@/lib/api/errors";
 
 export async function GET(
   request: NextRequest,
@@ -110,6 +111,6 @@ export async function GET(
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/payments/[id]/receipt", error);
   }
 }

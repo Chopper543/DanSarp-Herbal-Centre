@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/auth/rbac";
 import { canAccessPaymentLedger } from "@/lib/auth/role-capabilities";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,11 +55,11 @@ export async function GET(request: NextRequest) {
     const { data: ledgerEntries, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/payment-ledger", error);
     }
 
     return NextResponse.json({ ledgerEntries }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/payment-ledger", error);
   }
 }

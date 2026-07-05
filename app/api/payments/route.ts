@@ -9,6 +9,7 @@ import { evaluateBookingPrerequisites } from "@/lib/appointments/prerequisites";
 import { logAuditEvent } from "@/lib/audit/log";
 import { z } from "zod";
 import { logger } from "@/lib/monitoring/logger";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 // Register payment providers
 paymentService.registerProvider("paystack", new PaystackProvider());
@@ -368,7 +369,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/payments", error);
       }
 
       return NextResponse.json({ payment }, { status: 200 });
@@ -382,11 +383,11 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/payments", error);
     }
 
     return NextResponse.json({ payments }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/payments", error);
   }
 }

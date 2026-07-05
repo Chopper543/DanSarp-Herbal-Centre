@@ -9,6 +9,30 @@ function safeEqual(a: string, b: string): boolean {
   }
 }
 
+/**
+ * Paystack signs the raw request body with HMAC-SHA512 using the secret key
+ * and delivers the hex digest in the `x-paystack-signature` header.
+ *
+ * Always compare with timingSafeEqual — `===` leaks information that an
+ * attacker can use to forge a valid signature byte-by-byte.
+ */
+export function verifyPaystackSignature(
+  rawBody: string,
+  signature: string | null,
+  secret: string | undefined
+): boolean {
+  if (!secret) {
+    throw new Error("Paystack secret not configured");
+  }
+  if (!signature) return false;
+
+  const expected = crypto
+    .createHmac("sha512", secret)
+    .update(rawBody)
+    .digest("hex");
+  return safeEqual(signature.trim(), expected);
+}
+
 export function verifyFlutterwaveSignature(
   rawBody: string,
   signature: string | null,
