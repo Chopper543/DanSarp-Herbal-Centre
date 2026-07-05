@@ -7,6 +7,8 @@ import { decode as base32Decode } from "base32.js";
 import QRCode from "qrcode";
 import { encryptSecret } from "@/lib/security/crypto";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
+import { logger } from "@/lib/monitoring/logger";
+import { internalError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,12 +67,12 @@ export async function POST(request: NextRequest) {
     // @ts-ignore - otplib v13 requires crypto plugin configuration
     const totp = new TOTP({
       secret,
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       createDigest: (algorithm: string, secret: string) => {
         const secretBuffer = Buffer.from(base32Decode(secret));
         return createHmac(algorithm, secretBuffer).digest();
       },
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       createRandomBytes: (size: number) => {
         return Promise.resolve(nodeRandomBytes(size));
       },
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateError) {
-      console.error("Failed to store 2FA secret:", updateError);
+      logger.error("Failed to store 2FA secret:", updateError);
       return NextResponse.json(
         { error: "Failed to generate 2FA secret" },
         { status: 500 }
@@ -108,10 +110,7 @@ export async function POST(request: NextRequest) {
       otpAuthUrl,
     });
   } catch (error: any) {
-    console.error("Error generating 2FA secret:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to generate 2FA secret" },
-      { status: 500 }
-    );
+    logger.error("Error generating 2FA secret:", error);
+    return internalError("/api/auth/2fa/generate", error, "Failed to generate 2FA secret");
   }
 }

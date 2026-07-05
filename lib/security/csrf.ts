@@ -8,9 +8,9 @@ const CSRF_EXEMPT_PATHS = [
   "/api/payments/ghana-rails/webhook",
 ];
 
-/**
- * Generates a CSRF token
- */
+export const CSRF_COOKIE_NAME = CSRF_TOKEN_NAME;
+export const CSRF_HEADER_NAME = CSRF_TOKEN_HEADER;
+
 export function generateCsrfToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -21,49 +21,25 @@ export function isCsrfExemptPath(pathname: string): boolean {
   );
 }
 
-/**
- * Gets or creates a CSRF token for the current session
- */
 export async function getCsrfToken(): Promise<string> {
   const cookieStore = await cookies();
-  let token = cookieStore.get(CSRF_TOKEN_NAME)?.value;
-
-  if (!token) {
-    token = generateCsrfToken();
-    // Token will be set via setCsrfTokenCookie
-  }
-
-  return token;
+  return cookieStore.get(CSRF_TOKEN_NAME)?.value ?? generateCsrfToken();
 }
 
-/**
- * Validates a CSRF token from the request
- * @param requestToken - Token from request header or body
- * @returns true if token is valid
- */
 export async function validateCsrfToken(
   requestToken: string | null,
   sessionTokenOverride?: string | null
 ): Promise<boolean> {
-  if (!requestToken) {
-    return false;
-  }
+  if (!requestToken) return false;
 
   const sessionToken =
     sessionTokenOverride !== undefined
       ? sessionTokenOverride
       : (await cookies()).get(CSRF_TOKEN_NAME)?.value;
 
-  if (!sessionToken) {
-    return false;
-  }
+  if (!sessionToken) return false;
+  if (requestToken.length !== sessionToken.length) return false;
 
-  // timingSafeEqual throws if buffer lengths differ.
-  if (requestToken.length !== sessionToken.length) {
-    return false;
-  }
-
-  // Use constant-time comparison to prevent timing attacks
   try {
     return crypto.timingSafeEqual(
       Buffer.from(requestToken),
@@ -74,44 +50,104 @@ export async function validateCsrfToken(
   }
 }
 
+export interface CsrfCookieDescriptor {
+  name: string;
+  value: string;
+  options: {
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite: "strict";
+    path: string;
+    maxAge: number;
+  };
+}
+
 /**
- * Sets CSRF token cookie in response
+ * The CSRF cookie is httpOnly. The token is delivered to the browser as a
+ * <meta name="csrf-token"> rendered server-side by the root layout, which
+ * reads it from the `x-csrf-token` request header injected by middleware.
+ * The client-side fetch interceptor reads the meta tag (not the cookie) and
+ * sets X-CSRF-Token on every same-origin mutating request.
  */
-export function setCsrfTokenCookie(token: string): { name: string; value: string; options: any } {
+export function setCsrfTokenCookie(token: string): CsrfCookieDescriptor {
   return {
     name: CSRF_TOKEN_NAME,
     value: token,
     options: {
-      // Must be readable by client fetch interceptor to set X-CSRF-Token.
-      httpOnly: false,
+      httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict" as const,
       path: "/",
-      maxAge: 60 * 60 * 24, // 24 hours
+      maxAge: 60 * 60 * 24,
     },
   };
 }
 
 /**
- * Middleware to validate CSRF token for state-changing requests
+ * Defense-in-depth: reject mutating requests whose Origin (or Referer if no
+ * Origin) doesn't match an expected host. SameSite=Strict already prevents
+ * most cross-site CSRF; this catches the few edge cases (e.g. older clients,
+ * service workers) and stops same-origin attacks via DNS rebinding.
  */
+function getAllowedOrigins(): Set<string> {
+  const origins = new Set<string>();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (siteUrl) {
+    try {
+      origins.add(new URL(siteUrl).origin);
+    } catch {
+      // ignore malformed value; env validator catches this at boot
+    }
+  }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl) {
+    try {
+      origins.add(new URL(appUrl).origin);
+    } catch {
+      // ignore
+    }
+  }
+  return origins;
+}
+
+function isOriginAllowed(request: Request): boolean {
+  const allowed = getAllowedOrigins();
+  if (allowed.size === 0) return true;
+
+  const origin = request.headers.get("origin");
+  if (origin) return allowed.has(origin);
+
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      return allowed.has(new URL(referer).origin);
+    } catch {
+      return false;
+    }
+  }
+
+  // No Origin and no Referer is suspicious for a state-changing request.
+  return false;
+}
+
 export async function requireCsrfToken(
   request: Request,
   tokenFromBody?: string
 ): Promise<{ valid: boolean; error?: string }> {
-  // Only validate POST, PUT, PATCH, DELETE requests
   const method = request.method;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     return { valid: true };
   }
 
-  // Skip CSRF validation for webhooks (they have their own signature verification)
   const url = new URL(request.url);
   if (isCsrfExemptPath(url.pathname)) {
     return { valid: true };
   }
 
-  // Get token from header or body
+  if (!isOriginAllowed(request)) {
+    return { valid: false, error: "Origin not allowed for this request." };
+  }
+
   const headerToken = request.headers.get(CSRF_TOKEN_HEADER);
   const token = headerToken || tokenFromBody;
 

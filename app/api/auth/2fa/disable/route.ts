@@ -6,6 +6,10 @@ import { createHmac } from "crypto";
 import { decode as base32Decode } from "base32.js";
 import { decryptSecret, hashBackupCode } from "@/lib/security/crypto";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
+import { getUserRole, requires2FA } from "@/lib/auth/rbac";
+import { logAuditEvent } from "@/lib/audit/log";
+import { logger } from "@/lib/monitoring/logger";
+import { internalError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +40,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Staff and admin roles cannot self-disable 2FA — it's a hard requirement.
+    // Removing 2FA from a privileged account requires admin intervention via
+    // the user-admin tooling (out of scope for this endpoint).
+    const userRole = await getUserRole();
+    if (requires2FA(userRole)) {
+      await logAuditEvent({
+        userId: user.id,
+        action: "2fa_disable_blocked",
+        resourceType: "user",
+        resourceId: user.id,
+        metadata: { role: userRole, reason: "role_requires_2fa" },
+      });
+      return NextResponse.json(
+        {
+          error: "2FA cannot be disabled for staff accounts. Contact an administrator.",
+          code: "TWOFA_DISABLE_FORBIDDEN_BY_ROLE",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { code } = body; // Optional: require verification code to disable
 
@@ -54,7 +79,7 @@ export async function POST(request: NextRequest) {
         // @ts-ignore - otplib v13 requires crypto plugin configuration
         const totp = new TOTP({
           secret: decryptSecret(typedUserData.two_factor_secret),
-          // @ts-ignore
+          // @ts-ignore - supabase type inference
           createDigest: (algorithm: string, secret: string) => {
             const secretBuffer = Buffer.from(base32Decode(secret));
             return createHmac(algorithm, secretBuffer).digest();
@@ -105,12 +130,20 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateError) {
-      console.error("Failed to disable 2FA:", updateError);
+      logger.error("Failed to disable 2FA:", updateError);
       return NextResponse.json(
         { error: "Failed to disable 2FA" },
         { status: 500 }
       );
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "2fa_disabled",
+      resourceType: "user",
+      resourceId: user.id,
+      metadata: { role: userRole, verified_with_code: Boolean(code) },
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -135,10 +168,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error: any) {
-    console.error("Error disabling 2FA:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to disable 2FA" },
-      { status: 500 }
-    );
+    logger.error("Error disabling 2FA:", error);
+    return internalError("/api/auth/2fa/disable", error, "Failed to disable 2FA");
   }
 }

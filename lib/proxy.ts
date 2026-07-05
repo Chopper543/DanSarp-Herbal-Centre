@@ -1,18 +1,31 @@
 import { type NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { updateSession } from "@/lib/supabase/middleware";
 import { assertRateLimitConfigured, checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
-import { getSecurityHeaders } from "@/lib/security/csp";
+import { buildCsp, getStaticSecurityHeaders } from "@/lib/security/csp";
 import { createClient } from "@/lib/supabase/server";
 import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/validate-request-size";
 import {
+  CSRF_COOKIE_NAME,
   generateCsrfToken,
   isCsrfExemptPath,
   requireCsrfToken,
   setCsrfTokenCookie,
 } from "@/lib/security/csrf";
+import { requires2FA } from "@/lib/auth/rbac";
+import type { UserRole } from "@/types";
 
 const PUBLIC_PATHS = [
   "/login",
+  // Auth pages must stay reachable regardless of session/2FA state — e.g. a
+  // 2FA-enrolled user completing a password reset arrives at /reset-password
+  // with a recovery session (set server-side by /auth/confirm) and must not be
+  // bounced to the 2FA challenge before they can set a new password.
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/auth/callback",
+  "/auth/confirm",
   "/api/auth/2fa/generate",
   "/api/auth/2fa/verify",
   "/api/auth/2fa/verify-login",
@@ -23,26 +36,81 @@ const PUBLIC_PATHS = [
   "/assets",
 ];
 
+/**
+ * Paths a staff user can reach BEFORE completing 2FA enrollment. They have a
+ * valid session (password-authenticated) but cannot use the rest of the app
+ * until they enroll. Keep this tight — anything not here is gated.
+ */
+const ENROLLMENT_ALLOWED_PATHS = [
+  "/setup-2fa",
+  "/api/auth/2fa/generate",
+  "/api/auth/2fa/verify",
+  "/api/auth/logout",
+  "/api/profile",
+  "/api/health",
+  "/_next",
+  "/favicon.ico",
+  "/assets",
+];
+
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
-function finalizeResponse(request: NextRequest, response: NextResponse) {
-  const csrfCookie = request.cookies.get("csrf-token")?.value;
-  if (!csrfCookie) {
-    const token = generateCsrfToken();
-    const cookie = setCsrfTokenCookie(token);
+function isEnrollmentAllowedPath(pathname: string) {
+  return ENROLLMENT_ALLOWED_PATHS.some((p) => pathname.startsWith(p));
+}
+
+interface RequestContext {
+  nonce: string;
+  csrfToken: string;
+  isNewCsrfToken: boolean;
+}
+
+function buildRequestContext(request: NextRequest): RequestContext {
+  const nonce = crypto.randomBytes(16).toString("base64");
+  const existing = request.cookies.get(CSRF_COOKIE_NAME)?.value;
+  if (existing) {
+    return { nonce, csrfToken: existing, isNewCsrfToken: false };
+  }
+  return { nonce, csrfToken: generateCsrfToken(), isNewCsrfToken: true };
+}
+
+function finalizeResponse(
+  request: NextRequest,
+  response: NextResponse,
+  ctx: RequestContext
+) {
+  if (ctx.isNewCsrfToken) {
+    const cookie = setCsrfTokenCookie(ctx.csrfToken);
     response.cookies.set(cookie.name, cookie.value, cookie.options);
   }
 
-  Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
+  const isDev = process.env.NODE_ENV !== "production";
+  response.headers.set("Content-Security-Policy", buildCsp({ nonce: ctx.nonce, isDev }));
+  Object.entries(getStaticSecurityHeaders()).forEach(([key, value]) => {
     response.headers.set(key, value);
   });
 
   return response;
 }
 
+/**
+ * Forward per-request nonce + CSRF token to downstream RSC/route handlers via
+ * request headers. The root layout reads them with next/headers and renders
+ * the meta tag + script nonces.
+ */
+function withContextHeaders(request: NextRequest, ctx: RequestContext): Headers {
+  const headers = new Headers(request.headers);
+  headers.set("x-nonce", ctx.nonce);
+  headers.set("x-csrf-token", ctx.csrfToken);
+  return headers;
+}
+
 export async function proxy(request: NextRequest) {
+  const ctx = buildRequestContext(request);
+  const forwarded = { "x-nonce": ctx.nonce, "x-csrf-token": ctx.csrfToken };
+
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith("/api/");
   const isWebhook = isCsrfExemptPath(pathname);
@@ -54,41 +122,67 @@ export async function proxy(request: NextRequest) {
 
   // Enforce 2FA for all authenticated routes (except public)
   if (!isPublicPath(pathname)) {
-    // Server-side check: if user has 2FA enabled but not verified, block
     try {
       const supabase = await createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-        if (user) {
-          authenticatedUserId = user.id;
-          // @ts-ignore - Supabase type inference issue
-          const { data: userData } = await supabase
-            .from("users")
-            .select("two_factor_enabled")
-            .eq("id", user.id)
-            .single();
+      if (user) {
+        authenticatedUserId = user.id;
+        // @ts-ignore - Supabase type inference issue
+        const { data: userData } = await supabase
+          .from("users")
+          .select("two_factor_enabled, role")
+          .eq("id", user.id)
+          .single();
 
-          const requires2fa = (userData as any)?.two_factor_enabled === true;
+        const twofaEnrolled = (userData as any)?.two_factor_enabled === true;
+        const userRole = ((userData as any)?.role as UserRole | null) ?? null;
+        const mustEnroll = requires2FA(userRole) && !twofaEnrolled;
 
-        if (requires2fa && !twofaVerified) {
+        // Staff role + not yet enrolled → force them to /setup-2fa. They keep
+        // their session but can only touch the enrollment surface.
+        if (mustEnroll && !isEnrollmentAllowedPath(pathname)) {
+          if (pathname.startsWith("/api/")) {
+            return finalizeResponse(
+              request,
+              NextResponse.json(
+                {
+                  error: "Two-factor enrollment required",
+                  code: "TWOFA_ENROLLMENT_REQUIRED",
+                },
+                { status: 403 }
+              ),
+              ctx
+            );
+          }
+          const url = request.nextUrl.clone();
+          url.pathname = "/setup-2fa";
+          url.searchParams.set("required", "1");
+          return finalizeResponse(request, NextResponse.redirect(url), ctx);
+        }
+
+        // Enrolled but session hasn't completed the OTP challenge → existing
+        // redirect-to-login path.
+        if (twofaEnrolled && !twofaVerified) {
           if (pathname.startsWith("/api/")) {
             return finalizeResponse(
               request,
               NextResponse.json(
                 { error: "Two-factor authentication required" },
                 { status: 401 }
-              )
+              ),
+              ctx
             );
           }
           const url = request.nextUrl.clone();
           url.pathname = "/login";
           url.searchParams.set("twofa", "1");
-          return finalizeResponse(request, NextResponse.redirect(url));
+          return finalizeResponse(request, NextResponse.redirect(url), ctx);
         }
       }
-    } catch (error) {
+    } catch {
       // Fail-safe: if we can't verify, let the existing cookie check run
     }
   }
@@ -100,25 +194,25 @@ export async function proxy(request: NextRequest) {
         NextResponse.json(
           { error: "Two-factor authentication required" },
           { status: 401 }
-        )
+        ),
+        ctx
       );
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("twofa", "1");
-    return finalizeResponse(request, NextResponse.redirect(url));
+    return finalizeResponse(request, NextResponse.redirect(url), ctx);
   }
 
   // Apply protective checks to API routes
   if (isApiRoute) {
-    // Enforce CSRF and request-size limits for mutating routes (webhooks opt-out)
     if (!isWebhook && isMutatingMethod) {
       const sizeCheck = await validateRequestSize(
         request,
         getMaxSizeForContentType(request.headers.get("content-type"))
       );
       if (sizeCheck) {
-        return finalizeResponse(request, sizeCheck);
+        return finalizeResponse(request, sizeCheck, ctx);
       }
 
       const csrf = await requireCsrfToken(request);
@@ -128,12 +222,12 @@ export async function proxy(request: NextRequest) {
           NextResponse.json(
             { error: csrf.error || "Invalid CSRF token" },
             { status: 403 }
-          )
+          ),
+          ctx
         );
       }
     }
 
-    // In production, require Redis-backed rate limiting
     try {
       assertRateLimitConfigured();
     } catch (error: any) {
@@ -145,14 +239,14 @@ export async function proxy(request: NextRequest) {
             message: error.message,
           },
           { status: 500 }
-        )
+        ),
+        ctx
       );
     }
 
-    // Skip rate limiting for webhooks (they have their own verification)
     if (isWebhook) {
-      const response = await updateSession(request);
-      return finalizeResponse(request, response);
+      const response = await updateSession(request, { forwardedHeaders: forwarded });
+      return finalizeResponse(request, response, ctx);
     }
 
     let rateLimitUserId = authenticatedUserId;
@@ -169,7 +263,6 @@ export async function proxy(request: NextRequest) {
     }
 
     const identifier = getRateLimitIdentifier(request, rateLimitUserId);
-    // Normalize clinical-notes detail routes (e.g. /api/clinical-notes/[id]) so they use the same limit
     const rateLimitPath =
       pathname.startsWith("/api/clinical-notes/") && !pathname.startsWith("/api/clinical-notes/search")
         ? "/api/clinical-notes"
@@ -193,21 +286,24 @@ export async function proxy(request: NextRequest) {
               "Retry-After": (result.reset - Math.floor(Date.now() / 1000)).toString(),
             },
           }
-        )
+        ),
+        ctx
       );
     }
 
-    // Add rate limit headers to response
-    const response = await updateSession(request);
+    const response = await updateSession(request, { forwardedHeaders: forwarded });
     response.headers.set("X-RateLimit-Limit", result.limit.toString());
     response.headers.set("X-RateLimit-Remaining", result.remaining.toString());
     response.headers.set("X-RateLimit-Reset", result.reset.toString());
-    return finalizeResponse(request, response);
+    return finalizeResponse(request, response, ctx);
   }
 
-  const response = await updateSession(request);
-  return finalizeResponse(request, response);
+  const response = await updateSession(request, { forwardedHeaders: forwarded });
+  return finalizeResponse(request, response, ctx);
 }
+
+// Keep helper exported for tests/future use; intentionally unused locally.
+export { withContextHeaders };
 
 export const config = {
   matcher: [

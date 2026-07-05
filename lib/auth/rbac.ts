@@ -66,6 +66,27 @@ export function isUserOnly(userRole: UserRole | null): boolean {
   return userRole === "user";
 }
 
+/**
+ * Roles for which 2FA enrollment is mandatory. Any role with privileged access
+ * to PHI, scheduling, or financial data is included; the patient-only "user"
+ * role is exempt (2FA is still available to them via security settings, just
+ * not enforced). Update this list in lock-step with `lib/proxy.ts`.
+ */
+export const STAFF_ROLES_REQUIRING_2FA: ReadonlyArray<UserRole> = [
+  "super_admin",
+  "admin",
+  "doctor",
+  "nurse",
+  "content_manager",
+  "appointment_manager",
+  "finance_manager",
+];
+
+export function requires2FA(userRole: UserRole | null | undefined): boolean {
+  if (!userRole) return false;
+  return STAFF_ROLES_REQUIRING_2FA.includes(userRole);
+}
+
 // Re-export capability helpers for consistent RBAC usage (server)
 export {
   canAccessSection,
