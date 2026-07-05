@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { logger } from "@/lib/monitoring/logger";
 
 let resendClient: Resend | null = null;
 
@@ -41,7 +42,7 @@ export async function sendEmail({
 
     return data;
   } catch (error) {
-    console.error("Email sending error:", error);
+    logger.error("Email sending error", error);
     throw error;
   }
 }

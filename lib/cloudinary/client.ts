@@ -1,4 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
+import { logger } from "@/lib/monitoring/logger";
 
 if (!process.env.CLOUDINARY_CLOUD_NAME) {
   throw new Error("Cloudinary credentials are not set");
@@ -39,7 +40,7 @@ export async function uploadImage(file: File | Buffer, folder?: string) {
 
     return uploadResult;
   } catch (error) {
-    console.error("Cloudinary upload error:", error);
+    logger.error("Cloudinary upload error", error);
     throw error;
   }
 }
@@ -49,7 +50,7 @@ export async function deleteImage(publicId: string) {
     const result = await cloudinary.uploader.destroy(publicId);
     return result;
   } catch (error) {
-    console.error("Cloudinary delete error:", error);
+    logger.error("Cloudinary delete error", error);
     throw error;
   }
 }

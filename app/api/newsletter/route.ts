@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { internalError, badRequest } from "@/lib/api/errors";
 import {
   SubscribeRequestSchema,
   UpdateSubscriberSchema,
@@ -46,10 +47,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to subscribe" },
-      { status: 500 }
-    );
+    return internalError("/api/newsletter", error, "Failed to subscribe");
   }
 }
 
@@ -91,12 +89,12 @@ export async function GET(request: NextRequest) {
     const { data: subscribers, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/newsletter", error);
     }
 
     return NextResponse.json({ subscribers }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/newsletter", error);
   }
 }
 
@@ -139,12 +137,12 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/newsletter", error);
     }
 
     return NextResponse.json({ subscriber }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/newsletter", error);
   }
 }
 
@@ -177,11 +175,11 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase.from("newsletter_subscribers").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/newsletter", error);
     }
 
     return NextResponse.json({ message: "Subscriber deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/newsletter", error);
   }
 }
