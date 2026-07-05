@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Prescription, HerbFormula, Appointment } from "@/types";
 import { Save, X, Plus, Trash2, AlertTriangle, CheckCircle } from "lucide-react";
 import { validatePrescription, InteractionWarning } from "@/lib/clinical/prescription-validator";
@@ -42,12 +42,6 @@ export function PrescriptionBuilder({
     instructions: "",
   });
 
-  const [validation, setValidation] = useState<{
-    valid: boolean;
-    errors: string[];
-    warnings: InteractionWarning[];
-  } | null>(null);
-
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
   useEffect(() => {
@@ -63,10 +57,11 @@ export function PrescriptionBuilder({
     }
   }, [patientId]);
 
-  useEffect(() => {
-    const result = validatePrescription(formData);
-    setValidation(result);
-  }, [formData]);
+  const validation = useMemo<{
+    valid: boolean;
+    errors: string[];
+    warnings: InteractionWarning[];
+  } | null>(() => validatePrescription(formData), [formData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

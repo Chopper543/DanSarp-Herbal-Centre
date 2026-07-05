@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(
   request: NextRequest,
@@ -20,7 +21,7 @@ export async function GET(
     const userRole = await getUserRole();
     const isUserAdmin = userRole && isAdmin(userRole);
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: form, error } = await supabase
       .from("intake_forms")
       .select("*")
@@ -28,7 +29,7 @@ export async function GET(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms/[id]", error);
     }
 
     // Check permissions - only active forms are visible to non-admins
@@ -39,7 +40,7 @@ export async function GET(
 
     return NextResponse.json({ form }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/[id]", error);
   }
 }
 
@@ -62,7 +63,7 @@ export async function PUT(
     const isUserAdmin = userRole && isAdmin(userRole);
 
     // Check if form exists
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingForm, error: fetchError } = await supabase
       .from("intake_forms")
       .select("*")
@@ -85,7 +86,7 @@ export async function PUT(
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: form, error } = await supabase
       .from("intake_forms")
       // @ts-ignore - Supabase type inference issue
@@ -95,12 +96,12 @@ export async function PUT(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms/[id]", error);
     }
 
     return NextResponse.json({ form }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/[id]", error);
   }
 }
 
@@ -127,15 +128,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { error } = await supabase.from("intake_forms").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms/[id]", error);
     }
 
     return NextResponse.json({ message: "Intake form deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/[id]", error);
   }
 }

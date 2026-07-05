@@ -7,6 +7,8 @@ import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
+import { VitalSignsSchema, findVitalSignWarnings } from "@/lib/clinical/vitals";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 const requestInfoFrom = (request: NextRequest) => ({
   ip:
@@ -17,17 +19,6 @@ const requestInfoFrom = (request: NextRequest) => ({
   path: request.nextUrl.pathname,
 });
 
-const vitalSignsSchema = z
-  .object({
-    temperature: z.number().nullable().optional(),
-    blood_pressure_systolic: z.number().nullable().optional(),
-    blood_pressure_diastolic: z.number().nullable().optional(),
-    heart_rate: z.number().nullable().optional(),
-    respiratory_rate: z.number().nullable().optional(),
-    spo2: z.number().nullable().optional(),
-  })
-  .strict();
-
 const ClinicalNoteSchema = z
   .object({
     patient_id: z.string().uuid(),
@@ -37,7 +28,7 @@ const ClinicalNoteSchema = z
     objective: z.string().max(8000).optional().nullable(),
     assessment: z.string().max(8000).optional().nullable(),
     plan: z.string().max(8000).optional().nullable(),
-    vital_signs: vitalSignsSchema.optional(),
+    vital_signs: VitalSignsSchema.optional(),
     diagnosis_codes: z.array(z.string().max(50)).max(50).optional().default([]),
     template_id: z.string().uuid().optional().nullable(),
     is_template: z.boolean().optional().default(false),
@@ -48,8 +39,15 @@ const ClinicalNoteSchema = z
 const ClinicalNoteUpdateSchema = ClinicalNoteSchema.partial()
   .extend({
     id: z.string().uuid(),
+    amended_reason: z.string().max(2000).optional(),
   })
   .strict();
+
+const ClinicalNoteDeleteSchema = z
+  .object({
+    deleted_reason: z.string().min(1).max(2000).optional(),
+  })
+  .partial();
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,7 +85,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/clinical-notes", error);
       }
 
       // Check permissions
@@ -99,6 +97,15 @@ export async function GET(request: NextRequest) {
       ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+
+      await logAuditEvent({
+        userId: user.id,
+        action: "read_clinical_note",
+        resourceType: "clinical_note",
+        resourceId: noteId,
+        metadata: { patient_id: typedNote?.patient_id },
+        requestInfo: requestInfoFrom(request),
+      });
 
       return NextResponse.json({ note }, { status: 200 });
     }
@@ -145,6 +152,14 @@ export async function GET(request: NextRequest) {
       query = query.eq("is_template", false);
     }
 
+    // Default to live rows only: hide superseded versions and soft-deleted
+    // rows. `include_history=true` returns the full amendment chain (for
+    // audit/legal review UI).
+    const includeHistory = searchParams.get("include_history") === "true";
+    if (!includeHistory) {
+      query = query.is("superseded_by_id", null).is("deleted_at", null);
+    }
+
     // Pagination
     const from = (page - 1) * limit;
     const to = from + limit - 1;
@@ -153,7 +168,18 @@ export async function GET(request: NextRequest) {
     const { data: notes, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/clinical-notes", error);
+    }
+
+    if (patientId && patientId !== user.id) {
+      await logAuditEvent({
+        userId: user.id,
+        action: "list_clinical_notes",
+        resourceType: "clinical_note",
+        resourceId: patientId,
+        metadata: { patient_id: patientId, count: count || 0, page, limit },
+        requestInfo: requestInfoFrom(request),
+      });
     }
 
     return NextResponse.json(
@@ -169,7 +195,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes", error);
   }
 }
 
@@ -246,22 +272,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unable to create clinical note" }, { status: 400 });
     }
 
+    const vitalWarnings = findVitalSignWarnings(vital_signs);
+
     await logAuditEvent({
       userId: user.id,
       action: "create_clinical_note",
       resourceType: "clinical_note",
       resourceId: (note as any)?.id,
+      newData: note as Record<string, any>,
       metadata: {
         patient_id,
         appointment_id,
         note_type,
+        vital_warnings: vitalWarnings.length ? vitalWarnings : undefined,
       },
       requestInfo: requestInfoFrom(request),
     });
 
-    return NextResponse.json({ note }, { status: 201 });
+    return NextResponse.json({ note, warnings: vitalWarnings }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes", error);
   }
 }
 
@@ -288,7 +318,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { id, ...updateData } = parsed.data;
+    const { id, amended_reason, ...updateData } = parsed.data;
 
     // Check if note exists and user has permission
     const { data: existingNote, error: fetchError } = await supabase
@@ -301,52 +331,109 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Clinical note not found" }, { status: 404 });
     }
 
-    // Check permissions
+    // Append-only: edits create a NEW row and mark the old one superseded.
+    // The original row is preserved verbatim (legal/medical record).
+    const typed = existingNote as Record<string, any>;
+    if (typed.superseded_by_id) {
+      return NextResponse.json(
+        { error: "Cannot amend a superseded note. Amend the current version instead." },
+        { status: 409 }
+      );
+    }
+    if (typed.deleted_at) {
+      return NextResponse.json(
+        { error: "Cannot amend a deleted note." },
+        { status: 409 }
+      );
+    }
+
     const typedExistingNote = existingNote as { doctor_id: string } | null;
     const canEditOwnAsDoctor = isDoctor(userRole) && typedExistingNote?.doctor_id === user.id;
     if (!isSystemAdmin && !canEditOwnAsDoctor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Update note
-    const updatePayload = {
+    // Build the amendment row: start from the existing row, layer the
+    // requested changes on top. Strip persistence/identity fields that the DB
+    // owns or that must not propagate.
+    const {
+      id: _oldId,
+      created_at: _oldCreatedAt,
+      updated_at: _oldUpdatedAt,
+      version: oldVersion,
+      superseded_by_id: _oldSupersededBy,
+      amended_from_id: _oldAmendedFrom,
+      is_amendment: _oldIsAmendment,
+      amended_reason: _oldAmendedReason,
+      deleted_at: _oldDeletedAt,
+      deleted_by: _oldDeletedBy,
+      deleted_reason: _oldDeletedReason,
+      ...preservedFields
+    } = typed;
+
+    const amendmentRow = {
+      ...preservedFields,
       ...updateData,
-      subjective: updateData.subjective ? sanitizeText(updateData.subjective) : updateData.subjective ?? null,
-      objective: updateData.objective ? sanitizeText(updateData.objective) : updateData.objective ?? null,
-      assessment: updateData.assessment ? sanitizeText(updateData.assessment) : updateData.assessment ?? null,
-      plan: updateData.plan ? sanitizeText(updateData.plan) : updateData.plan ?? null,
+      subjective: updateData.subjective ? sanitizeText(updateData.subjective) : updateData.subjective ?? preservedFields.subjective ?? null,
+      objective: updateData.objective ? sanitizeText(updateData.objective) : updateData.objective ?? preservedFields.objective ?? null,
+      assessment: updateData.assessment ? sanitizeText(updateData.assessment) : updateData.assessment ?? preservedFields.assessment ?? null,
+      plan: updateData.plan ? sanitizeText(updateData.plan) : updateData.plan ?? preservedFields.plan ?? null,
+      version: (typeof oldVersion === "number" ? oldVersion : 1) + 1,
+      amended_from_id: id,
+      is_amendment: true,
+      amended_reason: amended_reason || null,
+      created_by: user.id,
       updated_by: user.id,
-      updated_at: new Date().toISOString(),
     };
 
     const { data: note, error } = await supabase
       .from("clinical_notes")
-      // @ts-ignore - Supabase type inference issue
-      .update(updatePayload as any)
-      .eq("id", id)
+      .insert(amendmentRow as any)
       .select()
       .single();
 
     if (error) {
-      logger.error("Failed to update clinical note", error);
-      return NextResponse.json({ error: "Unable to update clinical note" }, { status: 400 });
+      logger.error("Failed to amend clinical note", error);
+      return NextResponse.json({ error: "Unable to amend clinical note" }, { status: 400 });
     }
+
+    // Mark old row superseded. If this fails we end up with two "live" rows in
+    // the chain — caller will see both via include_history=true; reconcile
+    // manually rather than rolling back the amendment (the amendment is the
+    // medically meaningful event and must be preserved).
+    const { error: supersedeError } = await supabase
+      .from("clinical_notes")
+      // @ts-ignore - Supabase type inference issue
+      .update({ superseded_by_id: (note as any).id, updated_at: new Date().toISOString() } as any)
+      .eq("id", id);
+    if (supersedeError) {
+      logger.error("Failed to mark prior clinical note superseded", supersedeError);
+    }
+
+    const vitalWarnings = updateData.vital_signs
+      ? findVitalSignWarnings(updateData.vital_signs)
+      : [];
 
     await logAuditEvent({
       userId: user.id,
-      action: "update_clinical_note",
+      action: "amend_clinical_note",
       resourceType: "clinical_note",
       resourceId: (note as any)?.id,
+      oldData: existingNote as Record<string, any>,
+      newData: note as Record<string, any>,
       metadata: {
         patient_id: (typedExistingNote as any)?.patient_id,
         appointment_id: (typedExistingNote as any)?.appointment_id,
+        amended_from_id: id,
+        amended_reason: amended_reason || null,
+        vital_warnings: vitalWarnings.length ? vitalWarnings : undefined,
       },
       requestInfo: requestInfoFrom(request),
     });
 
-    return NextResponse.json({ note }, { status: 200 });
+    return NextResponse.json({ note, warnings: vitalWarnings }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes", error);
   }
 }
 
@@ -387,11 +474,27 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Hard delete
-    const { error } = await supabase.from("clinical_notes").delete().eq("id", id);
+    if ((existingNote as any)?.deleted_at) {
+      return NextResponse.json({ error: "Note is already deleted" }, { status: 409 });
+    }
+
+    const deletedReason = searchParams.get("reason") || null;
+
+    // Soft delete: preserve the row for legal/medical record retention.
+    const { data: deleted, error } = await supabase
+      .from("clinical_notes")
+      // @ts-ignore - Supabase type inference issue
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id,
+        deleted_reason: deletedReason ? sanitizeText(deletedReason) : null,
+      } as any)
+      .eq("id", id)
+      .select()
+      .single();
 
     if (error) {
-      logger.error("Failed to delete clinical note", error);
+      logger.error("Failed to soft-delete clinical note", error);
       return NextResponse.json({ error: "Unable to delete clinical note" }, { status: 400 });
     }
 
@@ -400,14 +503,18 @@ export async function DELETE(request: NextRequest) {
       action: "delete_clinical_note",
       resourceType: "clinical_note",
       resourceId: id,
+      oldData: existingNote as Record<string, any>,
+      newData: deleted as Record<string, any>,
       metadata: {
         patient_id: (existingNote as any)?.patient_id,
+        soft_delete: true,
+        deleted_reason: deletedReason,
       },
       requestInfo: requestInfoFrom(request),
     });
 
     return NextResponse.json({ message: "Clinical note deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes", error);
   }
 }

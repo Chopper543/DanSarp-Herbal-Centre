@@ -11,15 +11,24 @@ export interface InteractionWarning {
   herbs: string[];
 }
 
-// Known herb interactions database (simplified - in production, use a comprehensive database)
+/**
+ * Herb → known interacting drug-classes / drugs (case-insensitive substring match).
+ * NOT exhaustive; this is a first-line safety net to surface obvious conflicts at
+ * prescribing time. The clinician remains the authority. Entries are matched
+ * against the patient's `current_medications` list using lowercased substring
+ * comparison so "Warfarin" matches "warfarin 5mg daily".
+ */
 const HERB_INTERACTIONS: Record<string, string[]> = {
-  "Ginkgo Biloba": ["Blood Thinners", "Aspirin", "Warfarin"],
-  "St. John's Wort": ["Antidepressants", "Birth Control", "Blood Thinners"],
-  "Ginseng": ["Blood Thinners", "Diabetes Medications", "Stimulants"],
-  "Garlic": ["Blood Thinners", "Antiplatelet Drugs"],
-  "Turmeric": ["Blood Thinners", "Diabetes Medications"],
-  "Echinacea": ["Immunosuppressants"],
-  "Kava": ["Alcohol", "Sedatives", "Liver Medications"],
+  "Ginkgo Biloba": ["blood thinner", "aspirin", "warfarin", "clopidogrel", "heparin"],
+  "St. John's Wort": ["antidepressant", "ssri", "maoi", "birth control", "oral contraceptive", "warfarin", "cyclosporine", "digoxin"],
+  "Ginseng": ["warfarin", "insulin", "metformin", "stimulant", "mao inhibitor"],
+  "Garlic": ["warfarin", "aspirin", "clopidogrel", "saquinavir"],
+  "Turmeric": ["warfarin", "aspirin", "metformin", "insulin"],
+  "Echinacea": ["immunosuppressant", "cyclosporine", "methotrexate"],
+  "Kava": ["alcohol", "benzodiazepine", "sedative", "levodopa"],
+  "Licorice": ["digoxin", "diuretic", "corticosteroid", "ace inhibitor"],
+  "Ginger": ["warfarin", "aspirin", "clopidogrel"],
+  "Hawthorn": ["digoxin", "beta blocker", "calcium channel blocker"],
 };
 
 /**
@@ -64,6 +73,53 @@ export function checkHerbInteractions(herbs: HerbFormula[]): InteractionWarning[
       message: `Duplicate herbs detected: ${duplicates.join(", ")}. Please verify dosages.`,
       herbs: duplicates,
     });
+  }
+
+  return warnings;
+}
+
+/**
+ * Patient-context check: cross-reference prescribed herbs against the patient's
+ * documented allergies and current medications. Returns warnings whose severity
+ * the caller uses to decide whether to block:
+ *   - "high" → block (allergy match, or known drug-class interaction)
+ *   - "medium" → surface to clinician, do not block
+ */
+export function checkPatientContraindications(
+  herbs: HerbFormula[],
+  allergies: string[] | null | undefined,
+  currentMedications: string[] | null | undefined
+): InteractionWarning[] {
+  const warnings: InteractionWarning[] = [];
+  const allergyList = (allergies || []).map((a) => a.toLowerCase()).filter(Boolean);
+  const medList = (currentMedications || []).map((m) => m.toLowerCase()).filter(Boolean);
+
+  for (const herb of herbs) {
+    const herbName = herb.name?.trim();
+    if (!herbName) continue;
+    const herbLower = herbName.toLowerCase();
+
+    if (allergyList.some((a) => a.includes(herbLower) || herbLower.includes(a))) {
+      warnings.push({
+        severity: "high",
+        message: `Patient has a documented allergy matching "${herbName}". Prescribing blocked.`,
+        herbs: [herbName],
+      });
+    }
+
+    const interactionKeywords = HERB_INTERACTIONS[herbName];
+    if (interactionKeywords && medList.length > 0) {
+      const conflicting = medList.filter((m) =>
+        interactionKeywords.some((kw) => m.includes(kw.toLowerCase()))
+      );
+      if (conflicting.length > 0) {
+        warnings.push({
+          severity: "high",
+          message: `${herbName} interacts with patient's current medication(s): ${conflicting.join(", ")}`,
+          herbs: [herbName],
+        });
+      }
+    }
   }
 
   return warnings;

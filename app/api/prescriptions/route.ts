@@ -9,6 +9,38 @@ import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
 import { sendEmail } from "@/lib/email/resend";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
+import { internalError, badRequest } from "@/lib/api/errors";
+import {
+  checkPatientContraindications,
+  validatePrescription,
+  InteractionWarning,
+} from "@/lib/clinical/prescription-validator";
+
+/**
+ * Loads patient-record fields (allergies, current medications) used by the
+ * contraindication checker. Returns empty arrays when no record exists — that
+ * is *not* a safe-pass, it just means we have no documented contraindications
+ * to test against; the herb-pair interaction check still runs.
+ */
+async function loadPatientSafetyContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  patientId: string
+): Promise<{ allergies: string[]; current_medications: string[] }> {
+  const { data } = await supabase
+    .from("patient_records")
+    .select("allergies, current_medications")
+    .eq("user_id", patientId)
+    .maybeSingle();
+  const row = data as { allergies?: string[] | null; current_medications?: string[] | null } | null;
+  return {
+    allergies: row?.allergies || [],
+    current_medications: row?.current_medications || [],
+  };
+}
+
+function hasBlockingWarning(warnings: InteractionWarning[]): boolean {
+  return warnings.some((w) => w.severity === "high");
+}
 
 const requestInfoFrom = (request: NextRequest) => ({
   ip:
@@ -102,7 +134,7 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific prescription
     if (prescriptionId) {
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: prescription, error } = await supabase
         .from("prescriptions")
         .select("*")
@@ -110,7 +142,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/prescriptions", error);
       }
 
       // Check permissions
@@ -122,6 +154,15 @@ export async function GET(request: NextRequest) {
       ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+
+      await logAuditEvent({
+        userId: user.id,
+        action: "read_prescription",
+        resourceType: "prescription",
+        resourceId: prescriptionId,
+        metadata: { patient_id: typedPrescription?.patient_id },
+        requestInfo: requestInfoFrom(request),
+      });
 
       return NextResponse.json({ prescription }, { status: 200 });
     }
@@ -147,11 +188,22 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("prescribed_date", { ascending: false });
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: prescriptions, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/prescriptions", error);
+    }
+
+    if (patientId && patientId !== user.id) {
+      await logAuditEvent({
+        userId: user.id,
+        action: "list_prescriptions",
+        resourceType: "prescription",
+        resourceId: patientId,
+        metadata: { patient_id: patientId, count: count || 0, page, limit },
+        requestInfo: requestInfoFrom(request),
+      });
     }
 
     return NextResponse.json(
@@ -167,7 +219,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions", error);
   }
 }
 
@@ -214,6 +266,39 @@ export async function POST(request: NextRequest) {
       doctor_notes,
     } = parsed.data;
 
+    // Safety validation BEFORE insert — block on high-severity contraindications.
+    const baseValidation = validatePrescription({
+      patient_id,
+      herbs_formulas: herbs_formulas as HerbFormula[],
+      start_date: start_date || undefined,
+      expiry_date: expiry_date || undefined,
+      refills_original: refills_original ?? undefined,
+      duration_days: duration_days ?? undefined,
+    } as any);
+    if (!baseValidation.valid) {
+      return NextResponse.json(
+        { error: "Prescription validation failed", details: baseValidation.errors },
+        { status: 422 }
+      );
+    }
+
+    const patientContext = await loadPatientSafetyContext(supabase, patient_id);
+    const contraindications = checkPatientContraindications(
+      herbs_formulas as HerbFormula[],
+      patientContext.allergies,
+      patientContext.current_medications
+    );
+    const allWarnings = [...baseValidation.warnings, ...contraindications];
+    if (hasBlockingWarning(allWarnings)) {
+      return NextResponse.json(
+        {
+          error: "Prescription blocked by safety check",
+          warnings: allWarnings,
+        },
+        { status: 422 }
+      );
+    }
+
     // Calculate end_date if duration_days is provided
     let end_date = null;
     if (duration_days && start_date) {
@@ -256,7 +341,12 @@ export async function POST(request: NextRequest) {
       action: "create_prescription",
       resourceType: "prescription",
       resourceId: (prescription as any)?.id,
-      metadata: { patient_id, appointment_id },
+      newData: prescription as Record<string, any>,
+      metadata: {
+        patient_id,
+        appointment_id,
+        safety_warnings: allWarnings.length ? allWarnings : undefined,
+      },
       requestInfo: requestInfoFrom(request),
     });
 
@@ -267,9 +357,9 @@ export async function POST(request: NextRequest) {
       "A new prescription has been issued for your care plan."
     );
 
-    return NextResponse.json({ prescription }, { status: 201 });
+    return NextResponse.json({ prescription, warnings: allWarnings }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions", error);
   }
 }
 
@@ -321,6 +411,36 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    // If herbs are being changed, re-run safety checks against the patient's
+    // current allergies + medications. Other updates (status, dosage instructions)
+    // bypass this since the herb list itself is unchanged.
+    let updateWarnings: InteractionWarning[] = [];
+    if (updateData.herbs_formulas && typedExistingPrescription?.patient_id) {
+      const baseValidation = validatePrescription({
+        patient_id: typedExistingPrescription.patient_id,
+        herbs_formulas: updateData.herbs_formulas as HerbFormula[],
+      } as any);
+      if (!baseValidation.valid) {
+        return NextResponse.json(
+          { error: "Prescription validation failed", details: baseValidation.errors },
+          { status: 422 }
+        );
+      }
+      const ctx = await loadPatientSafetyContext(supabase, typedExistingPrescription.patient_id);
+      const contraindications = checkPatientContraindications(
+        updateData.herbs_formulas as HerbFormula[],
+        ctx.allergies,
+        ctx.current_medications
+      );
+      updateWarnings = [...baseValidation.warnings, ...contraindications];
+      if (hasBlockingWarning(updateWarnings)) {
+        return NextResponse.json(
+          { error: "Prescription update blocked by safety check", warnings: updateWarnings },
+          { status: 422 }
+        );
+      }
+    }
+
     // Calculate end_date if duration_days is being updated
     if (updateData.duration_days && updateData.start_date) {
       const start = new Date(updateData.start_date);
@@ -359,9 +479,12 @@ export async function PUT(request: NextRequest) {
       action: "update_prescription",
       resourceType: "prescription",
       resourceId: (prescription as any)?.id,
+      oldData: existingPrescription as Record<string, any>,
+      newData: prescription as Record<string, any>,
       metadata: {
         patient_id: (typedExistingPrescription as any)?.patient_id,
         appointment_id: (typedExistingPrescription as any)?.appointment_id,
+        safety_warnings: updateWarnings.length ? updateWarnings : undefined,
       },
       requestInfo: requestInfoFrom(request),
     });
@@ -376,9 +499,9 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ prescription }, { status: 200 });
+    return NextResponse.json({ prescription, warnings: updateWarnings }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions", error);
   }
 }
 
@@ -420,7 +543,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Soft delete by setting status to cancelled
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { error } = await supabase
       .from("prescriptions")
       // @ts-ignore - Supabase type inference issue
@@ -437,6 +560,7 @@ export async function DELETE(request: NextRequest) {
       action: "delete_prescription",
       resourceType: "prescription",
       resourceId: id,
+      oldData: existingPrescription as Record<string, any>,
       metadata: {
         patient_id: (existingPrescription as any)?.patient_id,
         appointment_id: (existingPrescription as any)?.appointment_id,
@@ -446,6 +570,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ message: "Prescription cancelled successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions", error);
   }
 }

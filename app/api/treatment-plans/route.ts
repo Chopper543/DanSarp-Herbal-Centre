@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isDoctor } from "@/lib/auth/rbac";
 import { TreatmentPlan } from "@/types";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     let query = supabase.from("treatment_plans").select("*", { count: "exact" });
 
     if (planId) {
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: plan, error } = await supabase
         .from("treatment_plans")
         .select("*")
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/treatment-plans", error);
       }
 
       const typedPlan = plan as { patient_id: string; doctor_id: string } | null;
@@ -63,11 +64,11 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("start_date", { ascending: false });
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: plans, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/treatment-plans", error);
     }
 
     return NextResponse.json(
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatment-plans", error);
   }
 }
 
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: plan, error } = await supabase
       .from("treatment_plans")
       // @ts-ignore - Supabase type inference issue
@@ -168,12 +169,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/treatment-plans", error);
     }
 
     return NextResponse.json({ treatment_plan: plan }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatment-plans", error);
   }
 }
 
@@ -198,7 +199,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Treatment plan ID is required" }, { status: 400 });
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingPlan, error: fetchError } = await supabase
       .from("treatment_plans")
       .select("*")
@@ -220,7 +221,7 @@ export async function PUT(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: plan, error } = await supabase
       .from("treatment_plans")
       // @ts-ignore - Supabase type inference issue
@@ -230,11 +231,11 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/treatment-plans", error);
     }
 
     return NextResponse.json({ treatment_plan: plan }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatment-plans", error);
   }
 }

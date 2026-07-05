@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { z } from "zod";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 const timeSchema = z
   .string()
@@ -70,16 +71,16 @@ export async function GET(request: NextRequest) {
       query = query.lte("end_date", endDate);
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: availability, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/availability", error);
     }
 
     return NextResponse.json({ availability: availability || [] }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/availability", error);
   }
 }
 
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: availability, error } = await supabase
       .from("doctor_availability")
       // @ts-ignore - Supabase type inference issue
@@ -132,12 +133,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/availability", error);
     }
 
     return NextResponse.json({ availability }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/availability", error);
   }
 }
 
@@ -169,7 +170,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Availability ID is required" }, { status: 400 });
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existing, error: fetchError } = await supabase
       .from("doctor_availability")
       .select("*")
@@ -191,7 +192,7 @@ export async function PUT(request: NextRequest) {
       reason: updateData.reason ? sanitizeText(updateData.reason) : updateData.reason ?? null,
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: availability, error } = await supabase
       .from("doctor_availability")
       // @ts-ignore - Supabase type inference issue
@@ -201,12 +202,12 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/availability", error);
     }
 
     return NextResponse.json({ availability }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/availability", error);
   }
 }
 
@@ -231,7 +232,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Availability ID is required" }, { status: 400 });
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existing, error: fetchError } = await supabase
       .from("doctor_availability")
       .select("*")
@@ -248,7 +249,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Soft delete
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { error } = await supabase
       .from("doctor_availability")
       // @ts-ignore - Supabase type inference issue
@@ -256,11 +257,11 @@ export async function DELETE(request: NextRequest) {
       .eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/availability", error);
     }
 
     return NextResponse.json({ message: "Availability deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/availability", error);
   }
 }
