@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { Toaster } from "@/components/ui/toaster";
@@ -32,7 +33,7 @@ export const metadata: Metadata = generateSeoMetadata({
   siteName: "DanSarp Herbal Centre",
 });
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -45,10 +46,19 @@ export default function RootLayout({
     medicalSpecialty: "Herbal Medicine",
   });
 
+  // Middleware injects per-request nonce + CSRF token. They are required for
+  // every inline <script> (CSP nonce) and for the client-side fetch
+  // interceptor to set X-CSRF-Token from a server-rendered meta tag.
+  const headerStore = await headers();
+  const nonce = headerStore.get("x-nonce") ?? "";
+  const csrfToken = headerStore.get("x-csrf-token") ?? "";
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="csrf-token" content={csrfToken} />
         <script
+          nonce={nonce}
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData),
@@ -57,6 +67,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${playfair.variable} font-sans antialiased`}>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -73,24 +84,17 @@ export default function RootLayout({
           }}
         />
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
                 try {
-                  var csrfCookieName = 'csrf-token';
                   var mutatingMethods = { POST: true, PUT: true, PATCH: true, DELETE: true };
                   var originalFetch = window.fetch.bind(window);
 
-                  function readCookie(name) {
-                    var prefix = name + '=';
-                    var parts = document.cookie ? document.cookie.split(';') : [];
-                    for (var i = 0; i < parts.length; i++) {
-                      var part = parts[i].trim();
-                      if (part.indexOf(prefix) === 0) {
-                        return decodeURIComponent(part.slice(prefix.length));
-                      }
-                    }
-                    return null;
+                  function readMetaToken() {
+                    var el = document.querySelector('meta[name="csrf-token"]');
+                    return el ? el.getAttribute('content') : null;
                   }
 
                   function resolveUrl(input) {
@@ -129,7 +133,7 @@ export default function RootLayout({
                     );
 
                     if (!headers.has('x-csrf-token')) {
-                      var token = readCookie(csrfCookieName);
+                      var token = readMetaToken();
                       if (token) {
                         headers.set('x-csrf-token', token);
                       }

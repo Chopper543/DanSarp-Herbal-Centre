@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/branches", error);
       }
 
       return NextResponse.json({ branch }, { status: 200 });
@@ -46,12 +47,12 @@ export async function GET(request: NextRequest) {
       .order("name", { ascending: true });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/branches", error);
     }
 
     return NextResponse.json({ branches }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/branches", error);
   }
 }
 
@@ -114,12 +115,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/branches", error);
     }
 
     return NextResponse.json({ branch }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/branches", error);
   }
 }
 
@@ -172,12 +173,12 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/branches", error);
     }
 
     return NextResponse.json({ branch }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/branches", error);
   }
 }
 
@@ -210,11 +211,11 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase.from("branches").delete().eq("id", branchId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/branches", error);
     }
 
     return NextResponse.json({ message: "Branch deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/branches", error);
   }
 }

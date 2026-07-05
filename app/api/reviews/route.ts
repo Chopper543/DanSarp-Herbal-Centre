@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin, isUserOnly } from "@/lib/auth/rbac";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,12 +44,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/reviews", error);
     }
 
     return NextResponse.json({ review }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/reviews", error);
   }
 }
 
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/reviews", error);
     }
 
     return NextResponse.json({
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
       },
     }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/reviews", error);
   }
 }
 
@@ -138,11 +139,11 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/reviews", error);
     }
 
     return NextResponse.json({ review }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/reviews", error);
   }
 }
