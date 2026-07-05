@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { acceptInvite, validateInviteToken } from "@/lib/auth/invite";
+import { logger } from "@/lib/monitoring/logger";
+import { internalError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,10 +44,7 @@ export async function POST(request: NextRequest) {
       role: invite.role,
     });
   } catch (error: any) {
-    console.error("Error accepting admin invite:", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to accept invite" },
-      { status: 500 }
-    );
+    logger.error("Error accepting admin invite:", error);
+    return internalError("/api/admin/invite/accept", error, "Failed to accept invite");
   }
 }
