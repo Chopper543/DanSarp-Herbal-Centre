@@ -18,7 +18,9 @@ The audit flagged these as *not line-by-line verified*. Confirm before building 
 
 ## 0b. RELEASE BLOCKER — production build is broken
 
-- [ ] **`next build` fails at "Collecting page data" with `ENOENT: .next/browser/default-stylesheet.css`; confirmed identical on the base branch, so pre-existing and unrelated to any 2FA work. App cannot produce a production build.** Undiagnosed.
+- [~] **`next build` fails at "Collecting page data" with `ENOENT: .next/browser/default-stylesheet.css`; confirmed identical on the base branch, so pre-existing and unrelated to any 2FA work. App cannot produce a production build.**
+  - Root cause found: `lib/utils/sanitize.ts` imports `isomorphic-dompurify`, which unconditionally `require("jsdom")`s on the server. jsdom's `style-rules.js` helper does `fs.readFileSync(path.resolve(__dirname, "../../browser/default-stylesheet.css"))` at module load time. Webpack bundles it into a single server chunk, so `__dirname` resolves to the chunk's own directory instead of jsdom's real location — the relative path lands on a file Next never copies.
+  - Fix in progress on `fix/build-jsdom-tracing` (branched off `main`, not the 2FA stack): mark `isomorphic-dompurify`/`jsdom` as `serverExternalPackages` in `next.config.js` so they're `require()`d from real `node_modules` at runtime instead of bundled. Verified end-to-end: baseline build fails identically, fixed build completes 108/108 pages, prod server serves real pages, sanitizer behavior (XSS stripping) unchanged.
 
 ---
 
@@ -132,6 +134,15 @@ Branch: `fix/transactional-patient-deletion`
 - [ ] **M3 — Doctors/nurses can't be invited.** **S** — `app/api/admin/invites/route.ts:88`. *Decision needed:* add `doctor`/`nurse` to the invite allowlist + accept flow, or document the intended clinician provisioning path.
 - [ ] **M5 — In-memory rate-limit fallback is per-instance.** **S** — `lib/rate-limit.ts:45-84`. Keep the prod assertion; ensure preview deployments handling real data also require Upstash.
 - [ ] **M6 — Webhook idempotency depends on an unverified unique constraint.** **S** — confirm the `webhook_events` unique constraint exists in the migration + add a test. (See section 0.)
+
+---
+
+## 5b. HARDENING — replace isomorphic-dompurify/jsdom with a lighter sanitizer (standalone branch, not urgent)
+
+- [ ] **Shed the full-DOM dependency and its server attack surface.** **M**
+  - `lib/utils/sanitize.ts` uses `isomorphic-dompurify`, which drags a full jsdom DOM implementation onto the server just to sanitize strings (see the build-tracing issue this caused, section 0b). A DOM emulation library is a large, security-sensitive dependency to run server-side for this.
+  - Fix: swap for a lighter server-only sanitizer (e.g. `sanitize-html`) with no DOM emulation. Re-express the current `ALLOWED_TAGS`/`ALLOWED_ATTR`/`ALLOWED_URI_REGEXP` config in the new library's terms.
+  - This is real PHI/XSS-sensitive work, not a drop-in swap: needs real XSS-payload testing (script injection, attribute injection, malformed/nested tags, dangerous URI schemes) across all 9 call sites — `app/api/{messages,clinical-notes,clinical-notes/[id],appointments,intake-forms/responses,availability,lab-results,lab-results/[id],prescriptions}/route.ts` and `app/(public)/blog/[slug]/page.tsx`. Track and test on its own branch; do not batch with the build-tracing fix (section 0b) or the 2FA work.
 
 ---
 
