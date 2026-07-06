@@ -15,6 +15,16 @@ const nextConfig = {
   // Ensure build output tracing stays within this workspace (avoids parent lockfile confusion)
   outputFileTracingRoot: __dirname,
 
+  // isomorphic-dompurify pulls in jsdom for server-side sanitization. jsdom's
+  // style-rules helper does `fs.readFileSync(path.resolve(__dirname, "../../browser/default-stylesheet.css"))`
+  // at module load time. When webpack bundles it into a single server chunk,
+  // __dirname resolves to the chunk's own directory (.next/server/chunks/),
+  // not jsdom's real location, so that relative path resolves to a file Next
+  // never copies (.next/browser/default-stylesheet.css) -> ENOENT during
+  // "Collecting page data". Marking the package external keeps it as a real
+  // node_modules require at runtime, where __dirname is jsdom's actual path.
+  serverExternalPackages: ["isomorphic-dompurify", "jsdom"],
+
   images: {
     remotePatterns: [
       {

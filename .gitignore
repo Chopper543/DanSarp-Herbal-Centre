@@ -28,6 +28,10 @@ yarn-error.log*
 .env*.local
 .env
 
+# stray env backups (e.g. .env.local.bak.<timestamp>) -- never commit real secrets
+.env*.bak*
+.env.local.bak.*
+
 # vercel
 .vercel
 
