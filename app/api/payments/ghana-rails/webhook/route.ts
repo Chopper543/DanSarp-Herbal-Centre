@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logger } from "@/lib/monitoring/logger";
+import { buildWebhookMetadata } from "@/lib/payments/webhook-idempotency";
+import { claimWebhookEvent } from "@/lib/payments/webhook-events";
 import {
-  buildWebhookMetadata,
-  getProcessedWebhookEventIds,
-} from "@/lib/payments/webhook-idempotency";
+  safeBearerEqual,
+  verifyGhanaRailsSignature,
+} from "@/lib/payments/ghana-rails-signature";
+import { validateRequestSize, getMaxSizeForContentType } from "@/lib/utils/validate-request-size";
 
 const WEBHOOK_SECRET = process.env.GHANA_RAILS_WEBHOOK_SECRET;
-const supabaseAdmin = (() => {
-  try {
-    return createServiceClient();
-  } catch {
-    return null;
-  }
-})();
+// Strict mode requires both bearer AND HMAC signature; default to true in
+// production. Set to "false" only during partner rollout if the sender
+// hasn't deployed signature support yet.
+const REQUIRE_SIGNATURE = process.env.GHANA_RAILS_REQUIRE_SIGNATURE !== "false";
 
 type GhanaRailsWebhookPayload = {
   id?: string;
@@ -26,17 +26,17 @@ type GhanaRailsWebhookPayload = {
 
 async function createAppointmentFromPayment(supabase: any, payment: any) {
   const metadata = payment.metadata as any;
-  if (!metadata?.appointment_data || payment.appointment_id || payment.status !== "completed") {
-    return null;
-  }
-
-  if (metadata.appointment_data.auto_create === false) {
+  if (
+    !metadata?.appointment_data ||
+    payment.appointment_id ||
+    payment.status !== "completed" ||
+    metadata.appointment_data.auto_create === false
+  ) {
     return null;
   }
 
   const appointmentData = metadata.appointment_data;
 
-  // @ts-ignore - Supabase type inference issue
   const { data: appointment, error: createError } = await supabase
     .from("appointments")
     .insert({
@@ -55,14 +55,12 @@ async function createAppointmentFromPayment(supabase: any, payment: any) {
     return null;
   }
 
-  // @ts-ignore - Supabase type inference issue
   const { error: linkError } = await supabase
     .from("payments")
     .update({ appointment_id: appointment.id })
     .eq("id", payment.id);
 
   if (linkError) {
-    // @ts-ignore - Supabase type inference issue
     await supabase.from("appointments").delete().eq("id", appointment.id);
     logger.error("Failed to link Ghana rails payment to appointment", linkError);
     return null;
@@ -72,103 +70,145 @@ async function createAppointmentFromPayment(supabase: any, payment: any) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    if (!WEBHOOK_SECRET || !supabaseAdmin) {
-      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
-    }
+  if (!WEBHOOK_SECRET) {
+    logger.error("GHANA_RAILS_WEBHOOK_SECRET not configured");
+    return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+  }
 
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
+  // 1. Bearer check (timing-safe). Failures look identical to signature
+  //    failures from the outside — generic 401.
+  if (!safeBearerEqual(request.headers.get("authorization"), WEBHOOK_SECRET)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 2. Size guard. Middleware skips this for webhook paths.
+  const sizeCheck = await validateRequestSize(
+    request,
+    getMaxSizeForContentType(request.headers.get("content-type"))
+  );
+  if (sizeCheck) return sizeCheck;
+
+  // 3. HMAC + replay-window check on the raw body.
+  const rawBody = await request.text();
+  const sigCheck = verifyGhanaRailsSignature({
+    rawBody,
+    timestamp: request.headers.get("x-timestamp"),
+    signature: request.headers.get("x-signature"),
+    secret: WEBHOOK_SECRET,
+  });
+
+  if (!sigCheck.valid) {
+    if (REQUIRE_SIGNATURE) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    logger.warn("Ghana-Rails webhook signature missing/invalid; bearer-only mode", {
+      reason: sigCheck.reason,
+    });
+  }
 
-    const body = (await request.json()) as GhanaRailsWebhookPayload;
-    const { provider_transaction_id, status, metadata } = body;
+  let body: GhanaRailsWebhookPayload;
+  try {
+    body = JSON.parse(rawBody) as GhanaRailsWebhookPayload;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-    if (!provider_transaction_id || !status) {
-      return NextResponse.json({ error: "provider_transaction_id and status are required" }, { status: 400 });
-    }
-
-    // Lookup payment by provider transaction id
-    const { data: payment, error } = await supabaseAdmin
-      .from("payments")
-      .select("*")
-      .eq("provider_transaction_id", provider_transaction_id)
-      .single();
-
-    if (error || !payment) {
-      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
-    }
-
-    const paymentRecord = payment as any;
-
-    if (paymentRecord.provider !== "custom") {
-      return NextResponse.json({ error: "Invalid provider for this webhook" }, { status: 400 });
-    }
-
-    const eventType = body.type || "ghana_rails.payment_status";
-    const eventId =
-      body.id?.toString() ||
-      body.event_id?.toString() ||
-      `${eventType}:${provider_transaction_id}:${status}`;
-    const dedupeEventId = `ghana_rails:${eventId}`;
-    if (getProcessedWebhookEventIds(paymentRecord.metadata).includes(dedupeEventId)) {
-      return NextResponse.json({ message: "Duplicate webhook ignored", duplicate: true }, { status: 200 });
-    }
-
-    const nextStatus =
-      status === "completed"
-        ? "completed"
-        : status === "failed"
-          ? "failed"
-          : "pending";
-
-    // Merge metadata and persist provider status for later verification
-    const mergedMetadata = buildWebhookMetadata(
-      paymentRecord.metadata as Record<string, any> | null | undefined,
-      dedupeEventId,
-      eventType,
-      {
-        provider_status: status,
-        provider_webhook_received_at: new Date().toISOString(),
-        provider_webhook_payload: metadata || {},
-      }
-    );
-
-    const { error: updateError } = await supabaseAdmin
-      .from("payments")
-      // @ts-ignore - Supabase type inference issue
-      .update({
-        status: nextStatus,
-        metadata: mergedMetadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("provider_transaction_id", provider_transaction_id);
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
-    }
-
-    if (nextStatus === "completed") {
-      // Re-fetch latest payment record (including merged metadata) and create appointment if needed.
-      // @ts-ignore - Supabase type inference issue
-      const { data: updatedPayment } = await supabaseAdmin
-        .from("payments")
-        .select("*")
-        .eq("id", paymentRecord.id)
-        .single();
-
-      if (updatedPayment) {
-        await createAppointmentFromPayment(supabaseAdmin, updatedPayment);
-      }
-    }
-
-    return NextResponse.json({ message: "Payment updated", status: nextStatus });
-  } catch (error: any) {
-    logger.error("Ghana rails webhook error", error);
+  const { provider_transaction_id, status, metadata } = body;
+  if (!provider_transaction_id || !status) {
     return NextResponse.json(
-      { error: error?.message || "Webhook processing failed" },
-      { status: 500 }
+      { error: "provider_transaction_id and status are required" },
+      { status: 400 }
     );
   }
+
+  const supabase = createServiceClient();
+
+  const eventType = body.type || "ghana_rails.payment_status";
+  const eventId =
+    body.id?.toString() ||
+    body.event_id?.toString() ||
+    `${eventType}:${provider_transaction_id}:${status}`;
+
+  // 4. Atomic dedup before any payment lookup. Same insert-first pattern as
+  //    the Paystack/Flutterwave router.
+  try {
+    const claim = await claimWebhookEvent(supabase, {
+      provider: "ghana_rails",
+      eventId,
+      eventType,
+      payload: body as unknown as Record<string, unknown>,
+    });
+    if (claim.duplicate) {
+      return NextResponse.json(
+        { message: "Duplicate webhook ignored", duplicate: true },
+        { status: 200 }
+      );
+    }
+  } catch (err) {
+    logger.error("Ghana-Rails webhook claim failed", err);
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
+  }
+
+  // 5. Look up payment and apply update.
+  const { data: payment, error } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("provider_transaction_id", provider_transaction_id)
+    .single();
+
+  if (error || !payment) {
+    return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+  }
+
+  const paymentRecord = payment as any;
+  if (paymentRecord.provider !== "custom") {
+    return NextResponse.json({ error: "Invalid provider for this webhook" }, { status: 400 });
+  }
+
+  const nextStatus =
+    status === "completed" ? "completed" : status === "failed" ? "failed" : "pending";
+
+  const dedupeEventId = `ghana_rails:${eventId}`;
+  const mergedMetadata = buildWebhookMetadata(
+    paymentRecord.metadata as Record<string, any> | null | undefined,
+    dedupeEventId,
+    eventType,
+    {
+      provider_status: status,
+      provider_webhook_received_at: new Date().toISOString(),
+      provider_webhook_payload: metadata || {},
+    }
+  );
+
+  const { error: updateError } = await supabase
+    .from("payments")
+    .update({
+      status: nextStatus,
+      metadata: mergedMetadata,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("provider_transaction_id", provider_transaction_id);
+
+  if (updateError) {
+    logger.error("Ghana-Rails payment update failed", updateError);
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
+  }
+
+  if (nextStatus === "completed") {
+    const { data: updatedPayment } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("id", paymentRecord.id)
+      .single();
+
+    if (updatedPayment) {
+      try {
+        await createAppointmentFromPayment(supabase, updatedPayment);
+      } catch (err) {
+        logger.error("Ghana-Rails appointment creation failed", err);
+      }
+    }
+  }
+
+  return NextResponse.json({ message: "Payment updated", status: nextStatus });
 }

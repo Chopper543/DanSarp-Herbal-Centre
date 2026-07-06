@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/rbac";
+import { authAwareError } from "@/lib/api/errors";
+import { logAuditEvent } from "@/lib/audit/log";
+import { auditRequestInfo } from "@/lib/audit/phi-read";
 import { z } from "zod";
 
 const UpdateRoleSchema = z.object({
@@ -41,11 +44,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ admins });
   } catch (error: any) {
-    const status = error.message === "Forbidden" ? 403 : 401;
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch admins" },
-      { status }
-    );
+    return authAwareError("GET /api/admin/admins", error, "Failed to fetch admins");
   }
 }
 
@@ -111,26 +110,27 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // Log action to audit_logs
-    // @ts-ignore - Supabase type inference issue
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
+    // Log action to audit_logs via the service-role helper. A direct insert
+    // with this user-scoped client is silently rejected — audit_logs REVOKEs
+    // INSERT from the authenticated role (see supabase/final_schema.sql), so
+    // the previous raw insert here dropped every role-change record.
+    await logAuditEvent({
+      userId: user.id,
       action: "update_admin_role",
-      resource_type: "user",
-      resource_id: userId,
+      resourceType: "user",
+      resourceId: userId,
+      oldData: targetUser ? { role: targetUser.role } : null,
+      newData: { role: newRole },
       metadata: {
         old_role: targetUser?.role,
         new_role: newRole,
+        source: "admin_admins_update",
       },
+      requestInfo: auditRequestInfo(request),
     });
 
     return NextResponse.json({ user: data });
   } catch (error: any) {
-    const status =
-      error.message === "Unauthorized" ? 401 : error.message === "Forbidden" ? 403 : 500;
-    return NextResponse.json(
-      { error: error.message || "Failed to update admin role" },
-      { status }
-    );
+    return authAwareError("PATCH /api/admin/admins", error, "Failed to update admin role");
   }
 }

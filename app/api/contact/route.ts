@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sendEmail } from "@/lib/email/resend";
 import { getRateLimitIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import { internalError } from "@/lib/api/errors";
 
 const ContactSchema = z.object({
   name: z.string().min(2, "Name is required"),
@@ -48,9 +49,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: "Message sent" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to send message" },
-      { status: 500 }
-    );
+    return internalError("/api/contact", error, "Failed to send message");
   }
 }

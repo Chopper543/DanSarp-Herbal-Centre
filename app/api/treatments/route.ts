@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { addCacheHeaders, cacheStrategies } from "@/lib/utils/cache-headers";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/treatments", error);
       }
 
       return NextResponse.json({ treatments: [data], treatment: data }, { status: 200 });
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/treatments", error);
       }
 
       return NextResponse.json({ treatments: [data], treatment: data }, { status: 200 });
@@ -48,14 +49,14 @@ export async function GET(request: NextRequest) {
       const { data, error } = await query.order("name", { ascending: true });
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/treatments", error);
       }
 
       const response = NextResponse.json({ treatments: data || [], treatment: null }, { status: 200 });
       return addCacheHeaders(response, cacheStrategies.mediumCache);
     }
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatments", error);
   }
 }
 
@@ -101,12 +102,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/treatments", error);
     }
 
     return NextResponse.json({ treatment }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatments", error);
   }
 }
 
@@ -154,12 +155,12 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/treatments", error);
     }
 
     return NextResponse.json({ treatment }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatments", error);
   }
 }
 
@@ -190,11 +191,11 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase.from("treatments").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/treatments", error);
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/treatments", error);
   }
 }

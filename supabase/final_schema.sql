@@ -523,34 +523,9 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION update_payment_ledger()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  current_balance DECIMAL(10, 2);
-  transaction_type_val transaction_type;
-BEGIN
-  PERFORM set_config('search_path','public,extensions',true);
-
-  IF NEW.status = 'completed' AND (OLD.status IS NULL OR OLD.status != 'completed') THEN
-    transaction_type_val := 'payment';
-    SELECT COALESCE(SUM(amount), 0) INTO current_balance
-    FROM payments
-    WHERE user_id = NEW.user_id AND status = 'completed';
-    INSERT INTO payment_ledger (payment_id, transaction_type, amount, balance_after)
-    VALUES (NEW.id, transaction_type_val, NEW.amount, current_balance);
-  ELSIF NEW.status = 'refunded' AND OLD.status != 'refunded' THEN
-    transaction_type_val := 'refund';
-    SELECT COALESCE(SUM(amount), 0) INTO current_balance
-    FROM payments
-    WHERE user_id = NEW.user_id AND status = 'completed' AND id != NEW.id;
-    INSERT INTO payment_ledger (payment_id, transaction_type, amount, balance_after)
-    VALUES (NEW.id, transaction_type_val, -NEW.amount, current_balance);
-  END IF;
-  RETURN NEW;
-END;
-$$;
+-- update_payment_ledger() is defined in the Refunds section at the end of this
+-- file (it depends on payments.refunded_amount) and wired to the payments_ledger
+-- trigger there.
 
 CREATE OR REPLACE FUNCTION sync_user_from_auth()
 RETURNS TRIGGER 
@@ -711,17 +686,27 @@ BEGIN
 END;
 $$;
 
+-- SECURITY DEFINER so the audit insert always succeeds regardless of the
+-- invoking role; audit_logs is RLS-locked and would otherwise reject (and roll
+-- back) trigger inserts made under an authenticated session. search_path is
+-- pinned in the function definition to prevent hijacking.
+--
+-- Actor attribution: prefer a transaction-local `app.actor_id` GUC when set,
+-- falling back to auth.uid(). Service-role writes (webhooks, cron, invite
+-- accept) have a NULL auth.uid(), so callers that know the real actor should
+-- `SELECT set_config('app.actor_id', '<uuid>', true)` inside the same
+-- transaction (e.g. a SECURITY DEFINER RPC) to keep the trail attributable.
 CREATE OR REPLACE FUNCTION create_audit_log()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
+SET search_path = public, extensions
 AS $$
 DECLARE
   action_type TEXT;
   old_data JSONB;
   new_data JSONB;
 BEGIN
-  PERFORM set_config('search_path','public,extensions',true);
 
   IF TG_OP = 'INSERT' THEN
     action_type := 'create';
@@ -743,7 +728,10 @@ BEGIN
     action_type,
     old_data,
     new_data,
-    (select auth.uid()),
+    COALESCE(
+      NULLIF(current_setting('app.actor_id', true), '')::uuid,
+      (select auth.uid())
+    ),
     NOW(),
     TG_TABLE_NAME,
     COALESCE(NEW.id, OLD.id)
@@ -795,6 +783,14 @@ CREATE TRIGGER audit_appointments AFTER INSERT OR UPDATE OR DELETE ON appointmen
 CREATE TRIGGER audit_payments AFTER INSERT OR UPDATE OR DELETE ON payments FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 CREATE TRIGGER audit_reviews AFTER INSERT OR UPDATE OR DELETE ON reviews FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 CREATE TRIGGER audit_admin_invites AFTER INSERT OR UPDATE OR DELETE ON admin_invites FOR EACH ROW EXECUTE FUNCTION create_audit_log();
+-- PHI tables: DB-level mutation audit backstop (defense-in-depth alongside the
+-- app-level logAuditEvent read/write logging). create_audit_log is SECURITY
+-- DEFINER, so these inserts succeed against the RLS-locked audit_logs table.
+CREATE TRIGGER audit_clinical_notes AFTER INSERT OR UPDATE OR DELETE ON clinical_notes FOR EACH ROW EXECUTE FUNCTION create_audit_log();
+CREATE TRIGGER audit_lab_results AFTER INSERT OR UPDATE OR DELETE ON lab_results FOR EACH ROW EXECUTE FUNCTION create_audit_log();
+CREATE TRIGGER audit_prescriptions AFTER INSERT OR UPDATE OR DELETE ON prescriptions FOR EACH ROW EXECUTE FUNCTION create_audit_log();
+CREATE TRIGGER audit_patient_records AFTER INSERT OR UPDATE OR DELETE ON patient_records FOR EACH ROW EXECUTE FUNCTION create_audit_log();
+CREATE TRIGGER audit_intake_form_responses AFTER INSERT OR UPDATE OR DELETE ON intake_form_responses FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 
 CREATE TRIGGER messages_updated_at BEFORE UPDATE ON messages FOR EACH ROW EXECUTE FUNCTION update_messages_updated_at();
 CREATE TRIGGER patient_age_before_insupd BEFORE INSERT OR UPDATE ON patient_records FOR EACH ROW EXECUTE FUNCTION update_patient_age();
@@ -922,8 +918,12 @@ CREATE POLICY invites_insert_super ON admin_invites FOR INSERT WITH CHECK ((sele
 CREATE POLICY invites_update_super ON admin_invites FOR UPDATE USING ((select is_super_admin())) WITH CHECK ((select is_super_admin()));
 CREATE POLICY invites_delete_super ON admin_invites FOR DELETE USING ((select is_super_admin()));
 
--- Audit logs
+-- Audit logs. Admin-only SELECT; no INSERT/UPDATE/DELETE policy by design.
+-- Writes happen only via the SECURITY DEFINER trigger (create_audit_log) and the
+-- service-role client (lib/audit/log.ts), both of which bypass RLS. Revoking
+-- write grants makes the trail write-once-read-many (tamper-evident).
 CREATE POLICY audit_select_admin ON audit_logs FOR SELECT USING ((select is_super_admin_or_admin()));
+REVOKE INSERT, UPDATE, DELETE ON audit_logs FROM authenticated, anon;
 
 -- Deletion requests
 CREATE POLICY deletion_requests_select ON deletion_requests
@@ -1455,3 +1455,284 @@ $p10$,
     author_id = EXCLUDED.author_id,
     updated_at = NOW();
 END$$;
+
+-- ============================================================
+-- Atomic webhook idempotency (see migrations/20260627000001).
+-- Service-role only — webhooks bypass user sessions entirely.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  provider TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  event_type TEXT,
+  payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
+  payload JSONB,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT webhook_events_provider_event_id_key UNIQUE (provider, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS webhook_events_payment_id_idx
+  ON webhook_events (payment_id);
+CREATE INDEX IF NOT EXISTS webhook_events_received_at_idx
+  ON webhook_events (received_at);
+
+ALTER TABLE webhook_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS webhook_events_service_role_only ON webhook_events;
+CREATE POLICY webhook_events_service_role_only ON webhook_events
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+-- Phase 3 / Task 28 — clinical_notes become append-only.
+--
+-- An UPDATE in the API layer is now translated to: insert a new note row
+-- referencing the previous row's id via `amended_from_id`, set the previous
+-- row's `superseded_by_id` to the new id, increment `version`. The old row is
+-- preserved verbatim for legal/medical record purposes (HIPAA 10-year retention
+-- + amendment audit trail).
+--
+-- DELETE in the API layer is now translated to a soft delete: set
+-- `deleted_at`, `deleted_by`, `deleted_reason`. The row is never physically
+-- removed by the application path.
+--
+-- New columns are all nullable / defaulted so existing rows remain valid.
+
+ALTER TABLE clinical_notes
+  ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS amended_from_id UUID REFERENCES clinical_notes(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS superseded_by_id UUID REFERENCES clinical_notes(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS is_amendment BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS amended_reason TEXT,
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS deleted_reason TEXT;
+
+-- Fast lookup of the live row in an amendment chain.
+CREATE INDEX IF NOT EXISTS idx_clinical_notes_superseded
+  ON clinical_notes (patient_id)
+  WHERE superseded_by_id IS NULL AND deleted_at IS NULL;
+
+-- Fast traversal back through the amendment history.
+CREATE INDEX IF NOT EXISTS idx_clinical_notes_amended_from
+  ON clinical_notes (amended_from_id)
+  WHERE amended_from_id IS NOT NULL;
+-- Phase 5: booking integrity
+--
+-- 1. Add cancelled_at column so cancellation is auditable + the unique constraint
+--    can exclude cancelled rows without ambiguity.
+-- 2. Add a GIST EXCLUDE constraint that prevents two live bookings at the same
+--    branch within ±1 hour of each other. Replaces the racy app-level
+--    SELECT-then-INSERT in app/api/appointments/route.ts.
+-- 3. Provide book_appointment() RPC so payment verification + slot reservation
+--    happen in a single Postgres transaction (supabase-js has no multi-statement
+--    transactions).
+
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+ALTER TABLE appointments
+  ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
+-- Drop any previous version of the constraint so this migration is re-runnable.
+ALTER TABLE appointments
+  DROP CONSTRAINT IF EXISTS appointments_no_overlap;
+
+-- `timestamptz ± interval` is only STABLE in Postgres (interval arithmetic can
+-- depend on the TimeZone GUC for DST), so it can't appear directly in an index /
+-- EXCLUDE expression — that raises `42P17: functions in index expression must be
+-- marked IMMUTABLE`. A fixed ±1h window is genuinely timezone-independent, so we
+-- wrap the range construction in an IMMUTABLE function and index on that.
+CREATE OR REPLACE FUNCTION appointment_slot_range(ts TIMESTAMPTZ)
+RETURNS tstzrange
+LANGUAGE sql IMMUTABLE PARALLEL SAFE
+AS $$
+  SELECT tstzrange(ts - INTERVAL '1 hour', ts + INTERVAL '1 hour', '()');
+$$;
+
+ALTER TABLE appointments
+  ADD CONSTRAINT appointments_no_overlap
+  EXCLUDE USING gist (
+    branch_id WITH =,
+    appointment_slot_range(appointment_date) WITH &&
+  )
+  WHERE (status IN ('pending', 'confirmed') AND cancelled_at IS NULL);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- book_appointment: atomic payment-check + slot-reserve.
+--
+-- Error contract (caught by the API and mapped to HTTP codes):
+--   SQLSTATE P0001  → SLOT_TAKEN              → 409
+--   SQLSTATE P0002  → PAYMENT_NOT_COMPLETED   → 422
+--   SQLSTATE P0003  → PAYMENT_NOT_FOUND       → 400
+--   SQLSTATE P0004  → PAYMENT_AMOUNT_INVALID  → 400
+--   SQLSTATE 23P01  → exclusion_violation     → re-raised as SLOT_TAKEN
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION book_appointment(
+  p_user_id           UUID,
+  p_branch_id         UUID,
+  p_appointment_date  TIMESTAMPTZ,
+  p_treatment_type    TEXT,
+  p_notes             TEXT,
+  p_payment_id        UUID
+) RETURNS appointments
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_payment       payments%ROWTYPE;
+  v_appointment   appointments%ROWTYPE;
+BEGIN
+  -- Lock the payment row so concurrent bookings can't double-spend it.
+  SELECT * INTO v_payment
+  FROM payments
+  WHERE id = p_payment_id AND user_id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'PAYMENT_NOT_FOUND' USING ERRCODE = 'P0003';
+  END IF;
+
+  IF v_payment.appointment_id IS NOT NULL THEN
+    -- Same payment already redeemed for another booking.
+    RAISE EXCEPTION 'PAYMENT_ALREADY_USED' USING ERRCODE = 'P0003';
+  END IF;
+
+  IF v_payment.status <> 'completed' THEN
+    RAISE EXCEPTION 'PAYMENT_NOT_COMPLETED' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF v_payment.amount <> 100 THEN
+    RAISE EXCEPTION 'PAYMENT_AMOUNT_INVALID' USING ERRCODE = 'P0004';
+  END IF;
+
+  BEGIN
+    INSERT INTO appointments (
+      user_id, branch_id, appointment_date, treatment_type, notes, status
+    ) VALUES (
+      p_user_id, p_branch_id, p_appointment_date, p_treatment_type, p_notes, 'pending'
+    )
+    RETURNING * INTO v_appointment;
+  EXCEPTION
+    WHEN exclusion_violation THEN
+      RAISE EXCEPTION 'SLOT_TAKEN' USING ERRCODE = 'P0001';
+    WHEN unique_violation THEN
+      RAISE EXCEPTION 'SLOT_TAKEN' USING ERRCODE = 'P0001';
+  END;
+
+  UPDATE payments
+  SET appointment_id = v_appointment.id,
+      updated_at = NOW()
+  WHERE id = p_payment_id;
+
+  RETURN v_appointment;
+END;
+$$;
+
+-- Allow authenticated callers (Supabase JS / RLS context) to invoke the RPC.
+-- The function still enforces user ownership via the p_user_id payment lock.
+GRANT EXECUTE ON FUNCTION book_appointment(
+  UUID, UUID, TIMESTAMPTZ, TEXT, TEXT, UUID
+) TO authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Refunds (folded in from migrations 20260627000004 + 20260628000003).
+--   * payments.refunded_amount supports partial refunds.
+--   * refund_requests drives the admin-gated refund lifecycle, including the
+--     interim 'processing' claim state used to prevent double-payouts.
+--   * update_payment_ledger() is redefined to log refunded_amount deltas AND is
+--     wired to a trigger — the base schema defined the function but never
+--     attached it, so payment_ledger was never being populated.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE payments
+  ADD COLUMN IF NOT EXISTS refunded_amount DECIMAL(10,2) NOT NULL DEFAULT 0
+    CHECK (refunded_amount >= 0);
+
+UPDATE payments
+SET refunded_amount = amount
+WHERE status = 'refunded' AND refunded_amount = 0;
+
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_refunded_amount_not_over;
+ALTER TABLE payments
+  ADD CONSTRAINT payments_refunded_amount_not_over CHECK (refunded_amount <= amount);
+
+CREATE TABLE IF NOT EXISTS refund_requests (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  payment_id           UUID NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+  appointment_id       UUID REFERENCES appointments(id) ON DELETE SET NULL,
+  requested_by         UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  requested_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status               TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','approved','processing','rejected','processed','failed')),
+  tier                 TEXT NOT NULL CHECK (tier IN ('full','partial','none')),
+  amount               DECIMAL(10,2) NOT NULL CHECK (amount >= 0),
+  reason               TEXT,
+  processed_by         UUID REFERENCES users(id) ON DELETE SET NULL,
+  processed_at         TIMESTAMPTZ,
+  provider_refund_id   TEXT,
+  failure_reason       TEXT,
+  metadata             JSONB DEFAULT '{}'::jsonb,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_refund_requests_payment_id    ON refund_requests (payment_id);
+CREATE INDEX IF NOT EXISTS idx_refund_requests_status        ON refund_requests (status);
+CREATE INDEX IF NOT EXISTS idx_refund_requests_requested_by  ON refund_requests (requested_by);
+
+-- At most one live request per payment (pending/approved/processing/processed).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refund_requests_one_live_per_payment
+  ON refund_requests (payment_id)
+  WHERE status IN ('pending','approved','processing','processed');
+
+ALTER TABLE refund_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS refund_requests_select_self ON refund_requests;
+CREATE POLICY refund_requests_select_self ON refund_requests
+  FOR SELECT USING (requested_by = (select auth.uid()));
+DROP POLICY IF EXISTS refund_requests_select_admin ON refund_requests;
+CREATE POLICY refund_requests_select_admin ON refund_requests
+  FOR SELECT USING ((select is_finance_staff_user()));
+DROP POLICY IF EXISTS refund_requests_insert_admin ON refund_requests;
+CREATE POLICY refund_requests_insert_admin ON refund_requests
+  FOR INSERT WITH CHECK ((select is_finance_staff_user()) OR requested_by = (select auth.uid()));
+DROP POLICY IF EXISTS refund_requests_update_admin ON refund_requests;
+CREATE POLICY refund_requests_update_admin ON refund_requests
+  FOR UPDATE USING ((select is_finance_staff_user()));
+
+GRANT SELECT, INSERT, UPDATE ON refund_requests TO authenticated;
+
+-- Ledger: initial payment entry on completion + a signed entry per refund delta.
+CREATE OR REPLACE FUNCTION update_payment_ledger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  current_balance DECIMAL(10, 2);
+  refund_delta    DECIMAL(10, 2);
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+
+  IF NEW.status = 'completed' AND (OLD.status IS NULL OR OLD.status != 'completed') THEN
+    SELECT COALESCE(SUM(amount), 0) INTO current_balance
+    FROM payments WHERE user_id = NEW.user_id AND status = 'completed';
+    INSERT INTO payment_ledger (payment_id, transaction_type, amount, balance_after)
+    VALUES (NEW.id, 'payment', NEW.amount, current_balance);
+  END IF;
+
+  refund_delta := COALESCE(NEW.refunded_amount, 0) - COALESCE(OLD.refunded_amount, 0);
+  IF refund_delta > 0 THEN
+    SELECT COALESCE(SUM(amount), 0) - COALESCE(SUM(refunded_amount), 0) INTO current_balance
+    FROM payments WHERE user_id = NEW.user_id AND status = 'completed';
+    INSERT INTO payment_ledger (payment_id, transaction_type, amount, balance_after)
+    VALUES (NEW.id, 'refund', -refund_delta, current_balance);
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS payments_ledger ON payments;
+CREATE TRIGGER payments_ledger
+  AFTER INSERT OR UPDATE ON payments
+  FOR EACH ROW EXECUTE FUNCTION update_payment_ledger();

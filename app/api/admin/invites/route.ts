@@ -4,6 +4,10 @@ import { getUserRole, isSuperAdmin } from "@/lib/auth/rbac";
 import crypto from "crypto";
 import { sendAdminInviteEmail } from "@/lib/email/resend";
 import { revokeInvite } from "@/lib/auth/invite";
+import { internalError, badRequest } from "@/lib/api/errors";
+import { logAuditEvent } from "@/lib/audit/log";
+import { auditRequestInfo } from "@/lib/audit/phi-read";
+import { logger } from "@/lib/monitoring/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,12 +52,12 @@ export async function GET(request: NextRequest) {
     const { data: invites, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/admin/invites", error);
     }
 
     return NextResponse.json({ invites }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/admin/invites", error);
   }
 }
 
@@ -131,8 +135,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/admin/invites", error);
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "invite_created",
+      resourceType: "admin_invite",
+      resourceId: (invite as { id?: string } | null)?.id ?? null,
+      newData: { email, role },
+      metadata: { email, role, source: "admin_invites_create" },
+      requestInfo: auditRequestInfo(request),
+    });
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const inviteLink = `${appUrl}/admin/invite/${token}`;
@@ -145,7 +159,7 @@ export async function POST(request: NextRequest) {
         invitedBy: user.email || user.user_metadata?.full_name || null,
       });
     } catch (err: any) {
-      console.error("Failed to send admin invite email:", err);
+      logger.error("Failed to send admin invite email:", err);
       return NextResponse.json(
         { error: "Invite created but email sending failed. Please retry or use the invite link.", invite, invite_link: inviteLink },
         { status: 500 }
@@ -154,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ invite, invite_link: inviteLink }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/admin/invites", error);
   }
 }
 
@@ -185,8 +199,17 @@ export async function DELETE(request: NextRequest) {
 
     await revokeInvite(id);
 
+    await logAuditEvent({
+      userId: user.id,
+      action: "invite_revoked",
+      resourceType: "admin_invite",
+      resourceId: id,
+      metadata: { source: "admin_invites_revoke" },
+      requestInfo: auditRequestInfo(request),
+    });
+
     return NextResponse.json({ message: "Invite deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/admin/invites", error);
   }
 }

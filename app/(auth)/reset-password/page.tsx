@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 function ResetPasswordForm() {
@@ -12,25 +12,30 @@ function ResetPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClient();
 
   useEffect(() => {
-    // Check if we have the necessary tokens from the URL hash
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const accessToken = hashParams.get("access_token");
-    const type = hashParams.get("type");
-
-    if (type === "recovery" && accessToken) {
-      // Token is in the hash, we can proceed
-    } else {
-      // Check if token is in search params (for email links)
-      const token = searchParams.get("token");
-      if (!token && !accessToken) {
-        setError("Invalid or missing reset token. Please request a new password reset.");
+    // The recovery link is verified server-side at /auth/confirm (verifyOtp),
+    // which sets a recovery session in cookies before redirecting here. So the
+    // valid state is "there is an authenticated session" — not a hash token.
+    // (Legacy hash-fragment links are still honoured: the browser client picks
+    // up the session from the URL, after which getUser() resolves.)
+    let active = true;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!active) return;
+      if (!user) {
+        setError(
+          "Invalid or expired reset link. Please request a new password reset."
+        );
       }
-    }
-  }, [searchParams]);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

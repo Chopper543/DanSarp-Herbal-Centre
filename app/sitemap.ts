@@ -1,5 +1,6 @@
 import { MetadataRoute } from "next";
 import { createClient } from "@supabase/supabase-js";
+import { logger } from "@/lib/monitoring/logger";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://dansarpherbal.com";
@@ -90,7 +91,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     return [...staticRoutes, ...blogRoutes];
   } catch (error) {
-    console.error("Error generating sitemap:", error);
+    logger.error("Error generating sitemap:", error);
     // Return static routes if database query fails
     return staticRoutes;
   }

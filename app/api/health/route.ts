@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { Redis } from "@upstash/redis";
+import { logger } from "@/lib/monitoring/logger";
 
 interface HealthCheck {
   status: "healthy" | "degraded" | "unhealthy";
@@ -42,14 +43,18 @@ export async function GET() {
     if (error) {
       health.status = "degraded";
       health.checks.database = "unhealthy";
-      health.error = `Database error: ${error.message}`;
+      // Don't leak the raw DB error to this public endpoint; the check status
+      // conveys health, the detail goes to logs/Sentry.
+      logger.error("Health check: database query failed", error);
+      health.error = "Database check failed";
     } else {
       health.checks.database = "healthy";
     }
   } catch (error: any) {
     health.status = "unhealthy";
     health.checks.database = "unhealthy";
-    health.error = `Database connection failed: ${error.message}`;
+    logger.error("Health check: database connection failed", error);
+    health.error = "Database connection failed";
   }
 
   // Check Redis connection (if configured)
@@ -64,8 +69,9 @@ export async function GET() {
     } catch (error: any) {
       health.status = health.status === "healthy" ? "degraded" : health.status;
       health.checks.redis = "unhealthy";
+      logger.error("Health check: redis ping failed", error);
       if (!health.error) {
-        health.error = `Redis error: ${error.message}`;
+        health.error = "Redis check failed";
       }
     }
   } else {

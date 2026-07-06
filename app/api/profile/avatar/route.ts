@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 400 });
+      return badRequest("/api/profile/avatar", uploadError);
     }
 
     // Get public URL
@@ -63,13 +64,13 @@ export async function POST(request: NextRequest) {
       });
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+      return badRequest("/api/profile/avatar", updateError);
     }
 
     // Return URL with cache-busting timestamp to force immediate refresh
     const avatarUrl = `${publicUrl}?t=${Date.now()}`;
     return NextResponse.json({ avatar_url: avatarUrl }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/profile/avatar", error);
   }
 }

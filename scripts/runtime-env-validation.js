@@ -15,13 +15,34 @@ function validateEnvOrThrowRuntime(options = {}) {
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     CSRF_SECRET: process.env.CSRF_SECRET,
     TWO_FA_ENC_KEY: process.env.TWO_FA_ENC_KEY,
+    PHI_FIELD_KEY: process.env.PHI_FIELD_KEY,
+    CRON_SECRET: process.env.CRON_SECRET,
   };
+
+  const minLengthKeys = new Set([
+    "CSRF_SECRET",
+    "TWO_FA_ENC_KEY",
+    "PHI_FIELD_KEY",
+    "CRON_SECRET",
+  ]);
 
   Object.entries(required).forEach(([key, value]) => {
     if (!value || `${value}`.trim() === "") {
       errors.push(`${key} is required`);
+      return;
+    }
+    if (minLengthKeys.has(key) && `${value}`.length < 32) {
+      errors.push(`${key} must be at least 32 characters`);
     }
   });
+
+  if (
+    process.env.TWO_FA_ENC_KEY &&
+    process.env.PHI_FIELD_KEY &&
+    process.env.TWO_FA_ENC_KEY === process.env.PHI_FIELD_KEY
+  ) {
+    errors.push("TWO_FA_ENC_KEY and PHI_FIELD_KEY must be distinct values");
+  }
 
   const recommended = {
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -32,7 +53,6 @@ function validateEnvOrThrowRuntime(options = {}) {
     FLUTTERWAVE_SECRET_KEY: process.env.FLUTTERWAVE_SECRET_KEY,
     GHANA_RAILS_WEBHOOK_SECRET: process.env.GHANA_RAILS_WEBHOOK_SECRET,
     BULLMQ_REDIS_URL: process.env.BULLMQ_REDIS_URL || process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL,
-    CRON_SECRET: process.env.CRON_SECRET,
   };
 
   if (strict) {
@@ -53,9 +73,6 @@ function validateEnvOrThrowRuntime(options = {}) {
     }
     if (!recommended.BULLMQ_REDIS_URL) {
       warnings.push("BullMQ Redis is not configured - reminder/notification queue disabled");
-    }
-    if (!recommended.CRON_SECRET) {
-      warnings.push("CRON_SECRET is not set - cron endpoints cannot be secured");
     }
   }
 

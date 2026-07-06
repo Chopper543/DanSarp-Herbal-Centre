@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { logAuditEvent } from "@/lib/audit/log";
 import { UserRole } from "@/types";
 import crypto from "crypto";
 
@@ -131,6 +132,24 @@ export async function acceptInvite(token: string, userId: string) {
   if (inviteError) {
     throw new Error(`Failed to mark invite as accepted: ${inviteError.message}`);
   }
+
+  // Explicitly attribute this privilege escalation. The users/admin_invites
+  // audit triggers fire under the service role, where auth.uid() is NULL — so
+  // without this the role grant would be logged with no actor. Record the
+  // accepting user as the actor plus the inviter/source for full context.
+  await logAuditEvent({
+    userId,
+    action: "invite_accepted",
+    resourceType: "user",
+    resourceId: userId,
+    newData: { role: invite.role },
+    metadata: {
+      role: invite.role,
+      invite_id: invite.id,
+      invited_by: invite.invited_by,
+      source: "invite_accept",
+    },
+  });
 
   return true;
 }

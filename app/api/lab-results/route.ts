@@ -9,6 +9,7 @@ import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
 import { sendEmail } from "@/lib/email/resend";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 const requestInfoFrom = (request: NextRequest) => ({
   ip:
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/lab-results", error);
       }
 
       // Check permissions
@@ -98,6 +99,15 @@ export async function GET(request: NextRequest) {
       ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+
+      await logAuditEvent({
+        userId: user.id,
+        action: "read_lab_result",
+        resourceType: "lab_result",
+        resourceId: labResultId,
+        metadata: { patient_id: typedLabResult?.patient_id },
+        requestInfo: requestInfoFrom(request),
+      });
 
       return NextResponse.json({ lab_result: labResult }, { status: 200 });
     }
@@ -144,7 +154,18 @@ export async function GET(request: NextRequest) {
     const { data: labResults, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/lab-results", error);
+    }
+
+    if (patientId && patientId !== user.id) {
+      await logAuditEvent({
+        userId: user.id,
+        action: "list_lab_results",
+        resourceType: "lab_result",
+        resourceId: patientId,
+        metadata: { patient_id: patientId, count: count || 0, page, limit },
+        requestInfo: requestInfoFrom(request),
+      });
     }
 
     return NextResponse.json(
@@ -160,7 +181,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/lab-results", error);
   }
 }
 
@@ -244,6 +265,7 @@ export async function POST(request: NextRequest) {
       action: "create_lab_result",
       resourceType: "lab_result",
       resourceId: (labResult as any)?.id,
+      newData: labResult as Record<string, any>,
       metadata: {
         patient_id,
         appointment_id,
@@ -276,7 +298,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ labResult }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/lab-results", error);
   }
 }
 
@@ -363,6 +385,8 @@ export async function PUT(request: NextRequest) {
       action: "update_lab_result",
       resourceType: "lab_result",
       resourceId: (labResult as any)?.id,
+      oldData: existingLabResult as Record<string, any>,
+      newData: labResult as Record<string, any>,
       metadata: {
         patient_id: (typedExistingLabResult as any)?.patient_id,
         appointment_id: (typedExistingLabResult as any)?.appointment_id,
@@ -403,7 +427,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ labResult }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/lab-results", error);
   }
 }
 
@@ -457,6 +481,7 @@ export async function DELETE(request: NextRequest) {
       action: "delete_lab_result",
       resourceType: "lab_result",
       resourceId: id,
+      oldData: existingLabResult as Record<string, any>,
       metadata: {
         patient_id: (existingLabResult as any)?.patient_id,
       },
@@ -465,6 +490,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ message: "Lab result deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/lab-results", error);
   }
 }

@@ -49,7 +49,9 @@ export function ClinicalNotesList({
   const [dateTo, setDateTo] = useState("");
 
   const onSearchRef = useRef(onSearch);
-  onSearchRef.current = onSearch;
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  });
   const isInitialMount = useRef(true);
 
   useEffect(() => {

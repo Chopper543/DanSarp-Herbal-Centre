@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { scrubBreadcrumb, scrubSentryEvent } from "@/lib/monitoring/sentry-scrub";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -7,11 +8,16 @@ Sentry.init({
   debug: process.env.NODE_ENV === "development",
   replaysOnErrorSampleRate: 1.0,
   replaysSessionSampleRate: 0.1,
+  // Healthcare context: never let Sentry attach IP / user-agent / cookies.
+  sendDefaultPii: false,
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.replayIntegration({
       maskAllText: true,
       blockAllMedia: true,
+      maskAllInputs: true,
     }),
   ],
+  beforeSend: scrubSentryEvent,
+  beforeBreadcrumb: scrubBreadcrumb,
 });

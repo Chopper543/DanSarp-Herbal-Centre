@@ -151,6 +151,36 @@ export interface Payment {
   status: PaymentStatus;
   provider: "paystack" | "flutterwave" | "custom";
   provider_transaction_id: string | null;
+  refunded_amount: number;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RefundRequestStatus =
+  | "pending"
+  | "approved"
+  | "processing"
+  | "rejected"
+  | "processed"
+  | "failed";
+
+export type RefundTierName = "full" | "partial" | "none";
+
+export interface RefundRequest {
+  id: string;
+  payment_id: string;
+  appointment_id: string | null;
+  requested_by: string;
+  requested_at: string;
+  status: RefundRequestStatus;
+  tier: RefundTierName;
+  amount: number;
+  reason: string | null;
+  processed_by: string | null;
+  processed_at: string | null;
+  provider_refund_id: string | null;
+  failure_reason: string | null;
   metadata: Record<string, any>;
   created_at: string;
   updated_at: string;

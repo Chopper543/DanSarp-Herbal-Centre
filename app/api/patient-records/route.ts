@@ -4,6 +4,7 @@ import { getUserRole } from "@/lib/auth/rbac";
 import { canAccessSection } from "@/lib/auth/role-capabilities";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
+import { internalError, badRequest } from "@/lib/api/errors";
 import {
   PatientRecordPayloadSchema,
   normalizePatientRecordPayload,
@@ -58,7 +59,18 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/patient-records", error);
+      }
+
+      if (userId !== user.id) {
+        await logAuditEvent({
+          userId: user.id,
+          action: "read_patient_record",
+          resourceType: "patient_record",
+          resourceId: userId,
+          metadata: { target_user_id: userId },
+          requestInfo: requestInfoFrom(request),
+        });
       }
 
       return NextResponse.json({ record }, { status: 200 });
@@ -85,8 +97,16 @@ export async function GET(request: NextRequest) {
         .order("last_visit_date", { ascending: false, nullsFirst: false });
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/patient-records", error);
       }
+
+      await logAuditEvent({
+        userId: user.id,
+        action: "list_patient_records",
+        resourceType: "patient_record",
+        metadata: { count: (records as unknown[] | null)?.length || 0 },
+        requestInfo: requestInfoFrom(request),
+      });
 
       return NextResponse.json({ records }, { status: 200 });
     } else {
@@ -99,13 +119,13 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/patient-records", error);
       }
 
       return NextResponse.json({ record: record || null }, { status: 200 });
     }
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/patient-records", error);
   }
 }
 
@@ -184,6 +204,7 @@ export async function POST(request: NextRequest) {
       action: "create_patient_record",
       resourceType: "patient_record",
       resourceId: (record as any)?.id,
+      newData: record as Record<string, any>,
       metadata: {
         target_user_id: targetUserId,
       },
@@ -192,7 +213,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ record }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/patient-records", error);
   }
 }
 
@@ -253,6 +274,12 @@ export async function PUT(request: NextRequest) {
 
     const normalizedUpdateData = normalizePatientRecordUpdatePayload(updateData);
 
+    const { data: existingRecord } = await supabase
+      .from("patient_records")
+      .select("*")
+      .eq("user_id", targetUserId)
+      .maybeSingle();
+
     // Update record
     const { data: record, error } = await supabase
       .from("patient_records")
@@ -275,6 +302,8 @@ export async function PUT(request: NextRequest) {
       action: "update_patient_record",
       resourceType: "patient_record",
       resourceId: (record as any)?.id,
+      oldData: (existingRecord as unknown as Record<string, any> | null) ?? null,
+      newData: record as Record<string, any>,
       metadata: {
         target_user_id: targetUserId,
       },
@@ -283,7 +312,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ record }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/patient-records", error);
   }
 }
 
@@ -313,13 +342,19 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const { data: existingRecord } = await supabase
+      .from("patient_records")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from("patient_records")
       .delete()
       .eq("user_id", userId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/patient-records", error);
     }
 
     await logAuditEvent({
@@ -327,11 +362,12 @@ export async function DELETE(request: NextRequest) {
       action: "delete_patient_record",
       resourceType: "patient_record",
       resourceId: userId,
+      oldData: (existingRecord as unknown as Record<string, any> | null) ?? null,
       requestInfo: requestInfoFrom(request),
     });
 
     return NextResponse.json({ message: "Patient record deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/patient-records", error);
   }
 }

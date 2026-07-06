@@ -38,7 +38,7 @@ export async function evaluateBookingPrerequisites(): Promise<BookingPrerequisit
   const emailVerified = user.email_confirmed_at !== null;
 
   // Fetch user profile fields from `users`
-  // @ts-ignore
+  // @ts-ignore - supabase type inference
   const { data: userRow } = await supabase
     .from("users")
     .select("full_name, phone")
@@ -50,7 +50,7 @@ export async function evaluateBookingPrerequisites(): Promise<BookingPrerequisit
   const phone = Boolean(typedUserRow?.phone && String(typedUserRow.phone).trim().length > 0);
 
   // Required intake forms
-  // @ts-ignore
+  // @ts-ignore - supabase type inference
   const { data: requiredFormsRows } = await supabase
     .from("intake_forms")
     .select("id, name")
@@ -67,7 +67,7 @@ export async function evaluateBookingPrerequisites(): Promise<BookingPrerequisit
   let completedFormIds = new Set<string>();
   if (requiredForms.length > 0) {
     // Treat any non-draft response as “completed enough” for booking.
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: responses } = await supabase
       .from("intake_form_responses")
       .select("form_id, status")

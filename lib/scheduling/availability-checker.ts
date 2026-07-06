@@ -26,7 +26,7 @@ export async function checkDoctorAvailability(
   const requestedDate = requestedDateTime.toISOString().split("T")[0];
   const dayOfWeek = requestedDateTime.getDay();
 
-  // @ts-ignore
+  // @ts-ignore - supabase type inference
   const { data: timeOff, error: timeOffError } = await supabase
     .from("doctor_availability")
     .select("*")
@@ -44,7 +44,7 @@ export async function checkDoctorAvailability(
   }
 
   // Check working hours
-  // @ts-ignore
+  // @ts-ignore - supabase type inference
   const { data: workingHours, error: workingHoursError } = await supabase
     .from("doctor_availability")
     .select("*")
@@ -69,7 +69,7 @@ export async function checkDoctorAvailability(
   }
 
   // Check for conflicting appointments
-  // @ts-ignore
+  // @ts-ignore - supabase type inference
   const { data: appointments, error: appointmentsError } = await supabase
     .from("appointments")
     .select("*")
@@ -107,7 +107,7 @@ export async function getAvailableTimeSlots(
   const dateString = date.toISOString().split("T")[0];
 
   // Get working hours for this day
-  // @ts-ignore
+  // @ts-ignore - supabase type inference
   const { data: workingHours, error } = await supabase
     .from("doctor_availability")
     .select("*")

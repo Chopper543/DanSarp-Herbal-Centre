@@ -4,6 +4,7 @@ import { getUserRole, isAdmin, isDoctor, isNurse } from "@/lib/auth/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific response
     if (responseId) {
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: response, error } = await supabase
         .from("intake_form_responses")
         .select("*")
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/intake-forms/responses", error);
       }
 
       // Check permissions
@@ -83,11 +84,11 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("created_at", { ascending: false });
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: responses, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms/responses", error);
     }
 
     return NextResponse.json(
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/responses", error);
   }
 }
 
@@ -135,7 +136,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if response exists
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingResponse, error: fetchError } = await supabase
       .from("intake_form_responses")
       .select("*")
@@ -184,7 +185,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: response, error } = await supabase
       .from("intake_form_responses")
       // @ts-ignore - Supabase type inference issue
@@ -194,7 +195,7 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms/responses", error);
     }
 
     const updatedStatus = (response as any)?.status as string | undefined;
@@ -233,6 +234,6 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ response }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/responses", error);
   }
 }

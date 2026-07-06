@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { IntakeForm, FormSchema } from "@/types";
 import { z } from "zod";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 const IntakeFormCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific form
     if (formId) {
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: form, error } = await supabase
         .from("intake_forms")
         .select("*")
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/intake-forms", error);
       }
 
       // Check permissions - only active forms are visible to non-admins
@@ -70,11 +71,11 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("created_at", { ascending: false });
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: forms, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms", error);
     }
 
     return NextResponse.json(
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms", error);
   }
 }
 
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: form, error } = await supabase
       .from("intake_forms")
       // @ts-ignore - Supabase type inference issue
@@ -143,12 +144,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms", error);
     }
 
     return NextResponse.json({ form }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms", error);
   }
 }
 
@@ -174,7 +175,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if form exists
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingForm, error: fetchError } = await supabase
       .from("intake_forms")
       .select("*")
@@ -197,7 +198,7 @@ export async function PUT(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: form, error } = await supabase
       .from("intake_forms")
       // @ts-ignore - Supabase type inference issue
@@ -207,12 +208,12 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms", error);
     }
 
     return NextResponse.json({ form }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms", error);
   }
 }
 
@@ -238,7 +239,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if form exists
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingForm, error: fetchError } = await supabase
       .from("intake_forms")
       .select("*")
@@ -255,15 +256,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Hard delete
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { error } = await supabase.from("intake_forms").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms", error);
     }
 
     return NextResponse.json({ message: "Intake form deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms", error);
   }
 }

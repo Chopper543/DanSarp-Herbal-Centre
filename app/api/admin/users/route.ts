@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/rbac";
+import { logAuditEvent } from "@/lib/audit/log";
+import { badRequest, authAwareError } from "@/lib/api/errors";
 
 /** GET - List all users. Only roles with "users" capability (super_admin, admin) may access. */
 export async function GET(request: Request) {
   try {
-    await requireAuth(["super_admin", "admin"]);
+    const authedUser = await requireAuth(["super_admin", "admin"]);
     const supabase = await createClient();
 
     const { searchParams } = new URL(request.url);
@@ -21,8 +23,23 @@ export async function GET(request: Request) {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/admin/users", error);
     }
+
+    await logAuditEvent({
+      userId: authedUser.id,
+      action: "admin_list_users",
+      resourceType: "user",
+      metadata: { page, limit, result_count: users?.length ?? 0, total: count ?? 0 },
+      requestInfo: {
+        ip:
+          request.headers.get("x-forwarded-for")?.split(",")[0] ||
+          request.headers.get("x-real-ip") ||
+          null,
+        userAgent: request.headers.get("user-agent"),
+        path: new URL(request.url).pathname,
+      },
+    });
 
     return NextResponse.json({
       users: users ?? [],
@@ -34,11 +51,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: any) {
-    const status =
-      error.message === "Unauthorized" ? 401 : error.message === "Forbidden" ? 403 : 500;
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch users" },
-      { status }
-    );
+    return authAwareError("GET /api/admin/users", error, "Failed to fetch users");
   }
 }

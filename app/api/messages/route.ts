@@ -4,6 +4,7 @@ import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { sendEmail } from "@/lib/email/resend";
 import { MessageRequestSchema } from "@/lib/validation/api-schemas";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 async function getDepartmentRecipientId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/messages", error);
     }
 
     return NextResponse.json(
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/messages", error);
   }
 }
 
@@ -222,7 +223,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/messages", error);
     }
 
     // Notify patient when staff replies
@@ -251,7 +252,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/messages", error);
   }
 }
 
@@ -308,11 +309,11 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/messages", error);
     }
 
     return NextResponse.json({ message: updatedMessage }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/messages", error);
   }
 }

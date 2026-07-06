@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/testimonials", error);
       }
 
       return NextResponse.json({ testimonials: [data], testimonial: data }, { status: 200 });
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
         .range(offset, offset + limit - 1);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/testimonials", error);
       }
 
       return NextResponse.json({
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
       }, { status: 200 });
     }
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/testimonials", error);
   }
 }
 
@@ -100,12 +101,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/testimonials", error);
     }
 
     return NextResponse.json({ testimonial }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/testimonials", error);
   }
 }
 
@@ -152,12 +153,12 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/testimonials", error);
     }
 
     return NextResponse.json({ testimonial }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/testimonials", error);
   }
 }
 
@@ -188,11 +189,11 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase.from("testimonials").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/testimonials", error);
     }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/testimonials", error);
   }
 }

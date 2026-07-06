@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { evaluateCancellationRefund } from "@/lib/payments/refunds";
 import { sendAppointmentConfirmation, sendEmail } from "@/lib/email/resend";
 import { sendAppointmentReminder, sendWhatsAppMessage } from "@/lib/whatsapp/twilio";
 import { getUserRole, isUserOnly } from "@/lib/auth/rbac";
@@ -9,6 +11,7 @@ import { AppointmentRequestSchema } from "@/lib/validation/api-schemas";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 const requestInfoFrom = (request: NextRequest) => ({
   ip:
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify payment is provided and completed
+    // Verify payment is provided
     if (!payment_id) {
       return NextResponse.json(
         { error: "Payment is required to book an appointment. Please complete payment first." },
@@ -73,99 +76,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify payment exists and is completed
-    // @ts-ignore - Supabase type inference issue with payments table
-    const { data: payment, error: paymentError } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("id", payment_id)
-      .eq("user_id", user.id)
-      .single();
+    // Atomic payment-check + slot-reserve via book_appointment() RPC.
+    // The function locks the payment row, validates status/amount/ownership,
+    // inserts the appointment under a GIST EXCLUDE constraint that prevents
+    // ±1h overlap at the same branch, and links the payment — all in one tx.
+    const { data: appointment, error: rpcError } = await (supabase.rpc as any)(
+      "book_appointment",
+      {
+        p_user_id: user.id,
+        p_branch_id: branch_id,
+        p_appointment_date: appointment_date,
+        p_treatment_type: treatment_type,
+        p_notes: notes ?? null,
+        p_payment_id: payment_id,
+      }
+    );
 
-    if (paymentError || !payment) {
-      return NextResponse.json(
-        { error: "Payment not found or invalid" },
-        { status: 400 }
-      );
-    }
-
-    const typedPayment = payment as { amount: number; status: string; currency: string } | null;
-
-    // Verify payment amount is 100 GHS (booking fee)
-    if (!typedPayment || parseFloat(typedPayment.amount.toString()) !== 100) {
-      return NextResponse.json(
-        { error: "Invalid payment amount. Booking fee must be 100 GHS" },
-        { status: 400 }
-      );
-    }
-
-    // Verify payment is completed
-    if (typedPayment.status !== "completed") {
-      return NextResponse.json(
-        { error: "Payment must be completed before booking appointment" },
-        { status: 400 }
-      );
-    }
-
-    const appointmentDate = new Date(appointment_date);
-    const windowStart = new Date(appointmentDate.getTime() - 60 * 60 * 1000);
-    const windowEnd = new Date(appointmentDate.getTime() + 60 * 60 * 1000);
-
-    // Prevent overlapping bookings within a 1-hour window at the same branch
-    // @ts-ignore - Supabase type inference issue with appointments table
-    const { data: conflictingAppointments } = await supabase
-      .from("appointments")
-      .select("id, appointment_date, status")
-      .eq("branch_id", branch_id)
-      .in("status", ["pending", "confirmed"])
-      .gte("appointment_date", windowStart.toISOString())
-      .lte("appointment_date", windowEnd.toISOString())
-      .limit(1);
-
-    if (conflictingAppointments && conflictingAppointments.length > 0) {
-      return NextResponse.json(
-        { error: "Selected time is unavailable. Please choose another slot." },
-        { status: 409 }
-      );
-    }
-
-    // Create appointment
-    const { data: appointment, error } = await supabase
-      .from("appointments")
-      // @ts-ignore - Supabase type inference issue with appointments table
-      .insert({
-        user_id: user.id,
-        branch_id,
-        appointment_date,
-        treatment_type,
-        notes,
-        status: "pending",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    // Link payment to appointment
-    const typedAppointment = appointment as { id: string } | null;
-    if (typedAppointment && payment_id) {
-      // @ts-ignore - Supabase type inference issue with payments table
-      const { error: linkError } = await supabase
-        .from("payments")
-        // @ts-ignore - Supabase type inference issue with payments table
-        .update({ appointment_id: typedAppointment.id })
-        .eq("id", payment_id);
-
-      if (linkError) {
-        // Roll back appointment to avoid orphaned bookings
-        // @ts-ignore - Supabase type inference issue with appointments table
-        await supabase.from("appointments").delete().eq("id", typedAppointment.id);
-        return NextResponse.json(
-          { error: "Failed to link payment to appointment. Please try again." },
-          { status: 500 }
-        );
+    if (rpcError) {
+      switch (rpcError.code) {
+        case "P0001":
+          return NextResponse.json(
+            { code: "SLOT_TAKEN", error: "Selected time is unavailable. Please choose another slot." },
+            { status: 409 }
+          );
+        case "P0002":
+          return NextResponse.json(
+            { code: "PAYMENT_NOT_COMPLETED", error: "Payment must be completed before booking appointment" },
+            { status: 422 }
+          );
+        case "P0003":
+          return NextResponse.json(
+            { code: "PAYMENT_NOT_FOUND", error: "Payment not found, already used, or does not belong to you" },
+            { status: 400 }
+          );
+        case "P0004":
+          return NextResponse.json(
+            { code: "PAYMENT_AMOUNT_INVALID", error: "Invalid payment amount. Booking fee must be 100 GHS" },
+            { status: 400 }
+          );
+        default:
+          logger.error("book_appointment RPC failed", rpcError);
+          return NextResponse.json(
+            { error: "Failed to book appointment" },
+            { status: 500 }
+          );
       }
     }
 
@@ -189,36 +143,33 @@ export async function POST(request: NextRequest) {
     
     const typedBranch = branch as { name: string } | null;
 
-    // Send email confirmation
+    // Fire-and-forget confirmations: a slow or unavailable email/WhatsApp
+    // provider must never add latency to — or fail — the booking response.
+    // Failures are logged; durable reminders run through the queue (cron path).
     if (typedUserData?.email) {
-      try {
-        await sendAppointmentConfirmation(typedUserData.email, {
-          date: new Date(appointment_date).toLocaleDateString(),
-          time: new Date(appointment_date).toLocaleTimeString(),
-          treatment: treatment_type,
-          branch: typedBranch?.name || "Main Branch",
-        });
-      } catch (emailError) {
-        logger.error("Failed to send appointment confirmation email", emailError);
-      }
+      sendAppointmentConfirmation(typedUserData.email, {
+        date: new Date(appointment_date).toLocaleDateString(),
+        time: new Date(appointment_date).toLocaleTimeString(),
+        treatment: treatment_type,
+        branch: typedBranch?.name || "Main Branch",
+      }).catch((emailError) =>
+        logger.error("Failed to send appointment confirmation email", emailError)
+      );
     }
 
-    // Send WhatsApp notification if phone number exists
     if (typedUserData?.phone) {
-      try {
-        await sendAppointmentReminder(typedUserData.phone, {
-          date: new Date(appointment_date).toLocaleDateString(),
-          time: new Date(appointment_date).toLocaleTimeString(),
-          treatment: treatment_type,
-        });
-      } catch (whatsappError) {
-        logger.error("Failed to send WhatsApp reminder", whatsappError);
-      }
+      sendAppointmentReminder(typedUserData.phone, {
+        date: new Date(appointment_date).toLocaleDateString(),
+        time: new Date(appointment_date).toLocaleTimeString(),
+        treatment: treatment_type,
+      }).catch((whatsappError) =>
+        logger.error("Failed to send WhatsApp reminder", whatsappError)
+      );
     }
 
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/appointments", error);
   }
 }
 
@@ -255,13 +206,26 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/appointments", error);
       }
 
       // Verify user owns this appointment (unless admin)
       const typedAppointment = appointment as { user_id: string } | null;
       if (!isAdminView && typedAppointment && typedAppointment.user_id !== user.id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      }
+
+      // Audit cross-user reads (admin viewing patient appointment).
+      // Self-reads are skipped to avoid log noise.
+      if (typedAppointment && typedAppointment.user_id !== user.id) {
+        await logAuditEvent({
+          userId: user.id,
+          action: "read_appointment",
+          resourceType: "appointment",
+          resourceId: appointmentId,
+          metadata: { patient_id: typedAppointment.user_id, admin_view: isAdminView },
+          requestInfo: requestInfoFrom(request),
+        });
       }
 
       return NextResponse.json({ appointments: [appointment] }, { status: 200 });
@@ -292,7 +256,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/appointments", error);
     }
 
     // For admin, annotate each appointment with paid flag (completed payment with matching appointment_id)
@@ -313,9 +277,29 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    // Audit cross-user appointment listings (admin browsing, or admin/patient
+    // querying ?patient_id=X != self). Skip self-only listings.
+    const auditedListing =
+      isAdminView || (requestedPatientId && requestedPatientId !== user.id);
+    if (auditedListing) {
+      await logAuditEvent({
+        userId: user.id,
+        action: isAdminView && !requestedPatientId
+          ? "admin_list_appointments"
+          : "list_appointments_by_patient",
+        resourceType: "appointment",
+        metadata: {
+          patient_id: requestedPatientId ?? null,
+          result_count: annotatedAppointments.length,
+          admin_view: isAdminView,
+        },
+        requestInfo: requestInfoFrom(request),
+      });
+    }
+
     return NextResponse.json({ appointments: annotatedAppointments }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/appointments", error);
   }
 }
 
@@ -403,7 +387,7 @@ export async function PATCH(request: NextRequest) {
         .single();
 
       if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 400 });
+        return badRequest("/api/appointments", updateError);
       }
 
       const { data: patient } = await supabase
@@ -483,7 +467,7 @@ export async function PATCH(request: NextRequest) {
         .single();
 
       if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 400 });
+        return badRequest("/api/appointments", updateError);
       }
 
       // Send notification
@@ -497,16 +481,15 @@ export async function PATCH(request: NextRequest) {
       const typedUserInfo = userInfo as { email: string; phone: string | null } | null;
 
       if (typedUserInfo?.email) {
-        try {
-          await sendAppointmentConfirmation(typedUserInfo.email, {
-            date: newAppointmentDate.toLocaleDateString(),
-            time: newAppointmentDate.toLocaleTimeString(),
-            treatment: typedAppointment.treatment_type,
-            branch: "Your Branch", // Could fetch branch name
-          });
-        } catch (emailError) {
-          logger.error("Failed to send reschedule confirmation email", emailError);
-        }
+        // Fire-and-forget: don't block the reschedule response on the mailer.
+        sendAppointmentConfirmation(typedUserInfo.email, {
+          date: newAppointmentDate.toLocaleDateString(),
+          time: newAppointmentDate.toLocaleTimeString(),
+          treatment: typedAppointment.treatment_type,
+          branch: "Your Branch", // Could fetch branch name
+        }).catch((emailError) =>
+          logger.error("Failed to send reschedule confirmation email", emailError)
+        );
       }
 
       return NextResponse.json({ appointment: updatedAppointment }, { status: 200 });
@@ -518,20 +501,96 @@ export async function PATCH(request: NextRequest) {
         // For now, we'll allow it but could enhance this later
       }
 
+      const nowIso = new Date().toISOString();
+      const cancelReason = typeof cancellation_reason === "string"
+        ? sanitizeText(cancellation_reason).slice(0, 500)
+        : null;
+
+      // Setting cancelled_at frees the slot from the appointments_no_overlap
+      // exclusion constraint while preserving the row for audit/refund tracing.
+      // payments.appointment_id is left intact so refund reconciliation can find
+      // the originating booking.
       // @ts-ignore - Supabase type inference issue with appointments table
       const { data: updatedAppointment, error: updateError } = await supabase
         .from("appointments")
         // @ts-ignore - Supabase type inference issue with appointments table
         .update({
           status: "cancelled",
-          updated_at: new Date().toISOString(),
+          cancelled_at: nowIso,
+          notes: cancelReason
+            ? `${typedAppointment.notes || ""}\n\n[Cancellation reason] ${cancelReason}`.trim()
+            : typedAppointment.notes,
+          updated_at: nowIso,
         })
         .eq("id", appointment_id)
         .select()
         .single();
 
       if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 400 });
+        return badRequest("/api/appointments", updateError);
+      }
+
+      await logAuditEvent({
+        userId: user.id,
+        action: "appointment_cancelled",
+        resourceType: "appointment",
+        resourceId: appointment_id,
+        metadata: {
+          previous_status: typedAppointment.status,
+          cancelled_by_admin: isAdmin,
+          hours_until_appointment: Math.round(hoursUntilAppointment * 10) / 10,
+          reason: cancelReason,
+        },
+        requestInfo: requestInfoFrom(request),
+      });
+
+      // Auto-create a pending refund request per the cancellation policy. Uses
+      // the service client so the request is attributed to the patient
+      // regardless of who cancelled, and so RLS can't block it. Never fails the
+      // cancellation — that already succeeded above.
+      try {
+        // Cast to any: refund_requests / payments.refunded_amount aren't in the
+        // generated Database type (codebase convention for newer tables).
+        const service = createServiceClient() as any;
+        const { data: paidPayment } = await service
+          .from("payments")
+          .select("id, amount, refunded_amount")
+          .eq("appointment_id", appointment_id)
+          .eq("status", "completed")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const eligibility = evaluateCancellationRefund({
+          payment: paidPayment as { amount: number; refunded_amount?: number | null } | null,
+          appointmentDate: typedAppointment.appointment_date,
+          cancelledAt: nowIso,
+        });
+
+        if (paidPayment && eligibility) {
+          const { error: refundError } = await service.from("refund_requests").insert({
+            payment_id: (paidPayment as any).id,
+            appointment_id,
+            requested_by: typedAppointment.user_id,
+            status: "pending",
+            tier: eligibility.tier,
+            amount: eligibility.amount,
+            reason: cancelReason || `Cancellation refund (${eligibility.reasonCode})`,
+            metadata: {
+              reason_code: eligibility.reasonCode,
+              created_from: "appointment_cancellation",
+            },
+          } as any);
+          // 23505 = a live refund request already exists for this payment → fine.
+          if (refundError && refundError.code !== "23505") {
+            logger.error("Failed to create refund request on cancellation", refundError);
+          }
+        }
+      } catch (refundCreateError) {
+        logger.error(
+          "Refund request creation failed (cancellation still succeeded)",
+          refundCreateError
+        );
       }
 
       return NextResponse.json({ appointment: updatedAppointment }, { status: 200 });
@@ -539,6 +598,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/appointments", error);
   }
 }

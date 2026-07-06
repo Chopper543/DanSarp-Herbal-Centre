@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import { logger } from "@/lib/monitoring/logger";
 
 let twilioClient: ReturnType<typeof twilio> | null = null;
 
@@ -40,7 +41,7 @@ export async function sendWhatsAppMessage(
 
     return result;
   } catch (error) {
-    console.error("WhatsApp sending error:", error);
+    logger.error("WhatsApp sending error", error);
     throw error;
   }
 }

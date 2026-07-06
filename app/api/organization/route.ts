@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,12 +15,12 @@ export async function GET(request: NextRequest) {
 
     if (error && error.code !== "PGRST116") {
       // PGRST116 is "not found" - profile might not exist yet
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/organization", error);
     }
 
     return NextResponse.json({ profile: profile || null }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/organization", error);
   }
 }
 
@@ -78,12 +79,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/organization", error);
     }
 
     return NextResponse.json({ profile }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/organization", error);
   }
 }
 
@@ -142,17 +143,17 @@ export async function PATCH(request: NextRequest) {
           .single();
 
         if (createError) {
-          return NextResponse.json({ error: createError.message }, { status: 400 });
+          return badRequest("/api/organization", createError);
         }
 
         return NextResponse.json({ profile: newProfile }, { status: 200 });
       }
 
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/organization", error);
     }
 
     return NextResponse.json({ profile }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/organization", error);
   }
 }

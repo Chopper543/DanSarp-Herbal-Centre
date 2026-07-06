@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/rbac";
+import { internalError, authAwareError } from "@/lib/api/errors";
 
 // GET - Get table list or execute read-only query
 export async function GET(request: NextRequest) {
@@ -83,10 +84,7 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch database info" },
-      { status: 401 }
-    );
+    return authAwareError("GET /api/admin/database", error, "Failed to fetch database info");
   }
 }
 
@@ -146,9 +144,6 @@ export async function POST(request: NextRequest) {
       { status: 501 }
     );
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to execute query" },
-      { status: 500 }
-    );
+    return internalError("/api/admin/database", error, "Failed to execute query");
   }
 }

@@ -6,6 +6,9 @@ import { createHmac, randomBytes as nodeRandomBytes, randomBytes } from "crypto"
 import { decode as base32Decode } from "base32.js";
 import { decryptSecret, hashBackupCode } from "@/lib/security/crypto";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
+import { logAuditEvent } from "@/lib/audit/log";
+import { logger } from "@/lib/monitoring/logger";
+import { internalError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
     // @ts-ignore - otplib v13 requires crypto plugin configuration
     const totp = new TOTP({
       secret: decryptSecret(typedUserData.two_factor_secret),
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       createDigest: (algorithm: string, secret: string) => {
         const secretBuffer = Buffer.from(base32Decode(secret));
         return createHmac(algorithm, secretBuffer).digest();
@@ -115,12 +118,20 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateError) {
-      console.error("Failed to enable 2FA:", updateError);
+      logger.error("Failed to enable 2FA:", updateError);
       return NextResponse.json(
         { error: "Failed to enable 2FA" },
         { status: 500 }
       );
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "2fa_enrolled",
+      resourceType: "user",
+      resourceId: user.id,
+      metadata: { backup_codes_issued: backupCodes.length },
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -146,10 +157,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error: any) {
-    console.error("Error verifying 2FA code:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to verify 2FA code" },
-      { status: 500 }
-    );
+    logger.error("Error verifying 2FA code:", error);
+    return internalError("/api/auth/2fa/verify", error, "Failed to verify 2FA code");
   }
 }

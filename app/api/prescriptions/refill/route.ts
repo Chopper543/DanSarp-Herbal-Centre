@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/auth/rbac";
 import { canAccessSection } from "@/lib/auth/role-capabilities";
+import { internalError, badRequest } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // If requesting specific refill
     if (refillId) {
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: refill, error } = await supabase
         .from("prescription_refills")
         .select("*")
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return badRequest("/api/prescriptions/refill", error);
       }
 
       // Check permissions
@@ -68,11 +69,11 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1;
     query = query.range(from, to).order("requested_date", { ascending: false });
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: refills, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/prescriptions/refill", error);
     }
 
     return NextResponse.json(
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions/refill", error);
   }
 }
 
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify prescription exists and belongs to user
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: prescription, error: prescriptionError } = await supabase
       .from("prescriptions")
       .select("*")
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if there's already a pending refill request
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingRefill, error: existingError } = await supabase
       .from("prescription_refills")
       .select("*")
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: refill, error } = await supabase
       .from("prescription_refills")
       // @ts-ignore - Supabase type inference issue
@@ -165,12 +166,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/prescriptions/refill", error);
     }
 
     return NextResponse.json({ refill }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions/refill", error);
   }
 }
 
@@ -208,7 +209,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Get existing refill request
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingRefill, error: fetchError } = await supabase
       .from("prescription_refills")
       .select("*")
@@ -236,7 +237,7 @@ export async function PUT(request: NextRequest) {
       updateData.admin_notes = admin_notes;
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: refill, error } = await supabase
       .from("prescription_refills")
       // @ts-ignore - Supabase type inference issue
@@ -246,12 +247,12 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/prescriptions/refill", error);
     }
 
     // If approved, update prescription refills_remaining
     if (status === "approved") {
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: prescription, error: prescriptionError } = await supabase
         .from("prescriptions")
         .select("refills_remaining")
@@ -265,7 +266,7 @@ export async function PUT(request: NextRequest) {
           (typedPrescription?.refills_remaining || 0) - (typedExistingRefill?.requested_refills || 1)
         );
 
-        // @ts-ignore
+        // @ts-ignore - supabase type inference
         await supabase
           .from("prescriptions")
           // @ts-ignore - Supabase type inference issue
@@ -276,6 +277,6 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ refill }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/prescriptions/refill", error);
   }
 }

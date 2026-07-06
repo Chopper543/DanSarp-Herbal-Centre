@@ -36,13 +36,35 @@ function LoginPageContent() {
       if (data.user) {
         // Check if user has 2FA enabled
         const response = await fetch(`/api/profile?user_id=${data.user.id}`);
+        const STAFF_ROLES_REQUIRING_2FA = [
+          "super_admin",
+          "admin",
+          "doctor",
+          "nurse",
+          "content_manager",
+          "appointment_manager",
+          "finance_manager",
+        ];
         if (response.ok) {
           const profileData = await response.json();
+          const userRole = profileData.user?.role as string | undefined;
+          const isStaff = userRole ? STAFF_ROLES_REQUIRING_2FA.includes(userRole) : false;
+
           if (profileData.user?.two_factor_enabled) {
             // User has 2FA enabled, require code
             document.cookie = "twofa_required=true; path=/; SameSite=Lax; Secure";
             setRequires2FA(true);
             setLoading(false);
+            return;
+          }
+
+          // Staff role without 2FA → must enroll before reaching any other page.
+          // The middleware will enforce this regardless, but routing directly
+          // avoids a dashboard flash.
+          if (isStaff) {
+            document.cookie = "twofa_verified=true; path=/; SameSite=Lax; Secure; Max-Age=86400";
+            router.push("/setup-2fa?required=1");
+            router.refresh();
             return;
           }
         }

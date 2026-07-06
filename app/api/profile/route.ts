@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getUserRole } from "@/lib/auth/rbac";
+import { logAuditEvent } from "@/lib/audit/log";
+import { internalError, badRequest } from "@/lib/api/errors";
+
+const PROFILE_READ_ADMIN_ROLES = new Set(["super_admin", "admin"]);
+
+const requestInfoFrom = (request: NextRequest) => ({
+  ip:
+    request.headers.get("x-forwarded-for")?.split(",")[0] ||
+    request.headers.get("x-real-ip") ||
+    null,
+  userAgent: request.headers.get("user-agent"),
+  path: request.nextUrl.pathname,
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,26 +21,36 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const requestedUserId = searchParams.get("user_id");
 
-    // If user_id is provided, check if requester is authorized
+    // Always require auth. The previous "no auth = self-id" path let
+    // anonymous callers fetch any user_id (PII enumeration by ID guessing).
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let userId: string;
-    if (requestedUserId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      
-      // Allow if requesting own data or if no auth (for login flow)
-      if (user && user.id !== requestedUserId) {
+    let crossUserRead = false;
+
+    if (requestedUserId && requestedUserId !== user.id) {
+      const role = await getUserRole();
+      if (!role || !PROFILE_READ_ADMIN_ROLES.has(role)) {
+        // Audit the attempt so suspicious profile-peeking is forensically visible.
+        await logAuditEvent({
+          userId: user.id,
+          action: "profile_read_forbidden",
+          resourceType: "user",
+          resourceId: requestedUserId,
+          metadata: { attempted_role: role ?? null },
+          requestInfo: requestInfoFrom(request),
+        });
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+      crossUserRead = true;
       userId = requestedUserId;
     } else {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
       userId = user.id;
     }
 
@@ -39,7 +63,7 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (userError) {
-      return NextResponse.json({ error: userError.message }, { status: 400 });
+      return badRequest("/api/profile", userError);
     }
 
     // Fetch profile data
@@ -51,7 +75,17 @@ export async function GET(request: NextRequest) {
 
     if (profileError && profileError.code !== "PGRST116") {
       // PGRST116 is "not found" - profile might not exist yet
-      return NextResponse.json({ error: profileError.message }, { status: 400 });
+      return badRequest("/api/profile", profileError);
+    }
+
+    if (crossUserRead) {
+      await logAuditEvent({
+        userId: user.id,
+        action: "admin_read_profile",
+        resourceType: "user",
+        resourceId: userId,
+        requestInfo: requestInfoFrom(request),
+      });
     }
 
     return NextResponse.json(
@@ -62,7 +96,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/profile", error);
   }
 }
 
@@ -95,7 +129,7 @@ export async function PUT(request: NextRequest) {
         .eq("id", user.id);
 
       if (userError) {
-        return NextResponse.json({ error: userError.message }, { status: 400 });
+        return badRequest("/api/profile", userError);
       }
     }
 
@@ -114,7 +148,7 @@ export async function PUT(request: NextRequest) {
         });
 
       if (profileError) {
-        return NextResponse.json({ error: profileError.message }, { status: 400 });
+        return badRequest("/api/profile", profileError);
       }
     }
 
@@ -140,6 +174,6 @@ export async function PUT(request: NextRequest) {
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/profile", error);
   }
 }

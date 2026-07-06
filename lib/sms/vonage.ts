@@ -1,5 +1,6 @@
 import { Vonage } from '@vonage/server-sdk';
 import { formatPhoneForSupabase } from '@/lib/utils/phone-format';
+import { logger } from '@/lib/monitoring/logger';
 
 let vonageClient: Vonage | null = null;
 
@@ -47,7 +48,7 @@ export async function sendSMS(to: string, text: string) {
 
     // Check if message was sent successfully
     if (response.messages && response.messages[0].status === '0') {
-      console.log('SMS sent successfully:', {
+      logger.info('SMS sent successfully', {
         to: formattedTo,
         messageId: response.messages[0]['message-id'],
       });
@@ -57,7 +58,7 @@ export async function sendSMS(to: string, text: string) {
       throw new Error(`Failed to send SMS: ${errorMessage}`);
     }
   } catch (error: any) {
-    console.error("Vonage SMS sending error:", error);
+    logger.error("Vonage SMS sending error", error);
     throw error;
   }
 }
@@ -90,13 +91,13 @@ export async function testSendSMS(phoneNumber: string, message?: string) {
   const testMessage = message || 'A text message sent using the Vonage SMS API';
   
   try {
-    console.log('Testing SMS send to:', phoneNumber);
+    logger.info('Testing SMS send', { phoneNumber });
     const result = await sendSMS(phoneNumber, testMessage);
-    console.log('Test SMS sent successfully');
-    console.log('Response:', result);
+    logger.info('Test SMS sent successfully');
+    logger.debug('Test SMS response', result);
     return result;
   } catch (error) {
-    console.error('Test SMS failed:', error);
+    logger.error('Test SMS failed', error);
     throw error;
   }
 }

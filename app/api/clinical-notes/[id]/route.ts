@@ -4,6 +4,8 @@ import { getUserRole, isDoctor } from "@/lib/auth/rbac";
 import { canAccessSection } from "@/lib/auth/role-capabilities";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { z } from "zod";
+import { internalError, badRequest } from "@/lib/api/errors";
+import { logPhiRead } from "@/lib/audit/phi-read";
 
 const vitalSignsSchema = z
   .object({
@@ -50,7 +52,7 @@ export async function GET(
     const userRole = await getUserRole();
     const canAccessClinicalNotes = canAccessSection(userRole, "clinical_notes");
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: note, error } = await supabase
       .from("clinical_notes")
       .select("*")
@@ -58,7 +60,7 @@ export async function GET(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/clinical-notes/[id]", error);
     }
 
     // Check permissions (patients see own; staff can see all)
@@ -71,9 +73,17 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    await logPhiRead({
+      request,
+      userId: user.id,
+      resourceType: "clinical_note",
+      resourceId: id,
+      patientId: typedNote?.patient_id ?? null,
+    });
+
     return NextResponse.json({ note }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes/[id]", error);
   }
 }
 
@@ -96,7 +106,7 @@ export async function PUT(
     const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
 
     // Check if note exists and user has permission
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingNote, error: fetchError } = await supabase
       .from("clinical_notes")
       .select("*")
@@ -144,7 +154,7 @@ export async function PUT(
       updated_at: new Date().toISOString(),
     };
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: note, error } = await supabase
       .from("clinical_notes")
       // @ts-ignore - Supabase type inference issue
@@ -154,12 +164,12 @@ export async function PUT(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/clinical-notes/[id]", error);
     }
 
     return NextResponse.json({ note }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes/[id]", error);
   }
 }
 
@@ -186,15 +196,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { error } = await supabase.from("clinical_notes").delete().eq("id", id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/clinical-notes/[id]", error);
     }
 
     return NextResponse.json({ message: "Clinical note deleted successfully" }, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/clinical-notes/[id]", error);
   }
 }

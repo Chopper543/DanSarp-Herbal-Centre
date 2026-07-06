@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
 
     // Find appointments scheduled for tomorrow (24h reminder)
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: appointments24h, error: error24h } = await supabase
       .from("appointments")
       .select("id")
@@ -91,10 +91,11 @@ export async function GET(request: NextRequest) {
       results,
     });
   } catch (error: any) {
+    logger.error("Appointment reminder cron failed", error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message,
+        error: "Reminder dispatch failed",
       },
       { status: 500 }
     );

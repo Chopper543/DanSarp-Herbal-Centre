@@ -1,20 +1,24 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHmac } from "crypto";
 
-const ENC_KEY = process.env.TWO_FA_ENC_KEY || "";
-const PHI_FIELD_KEY = process.env.PHI_FIELD_KEY || "";
+function readKey(envName: "TWO_FA_ENC_KEY" | "PHI_FIELD_KEY"): Buffer {
+  const value = process.env[envName];
+  if (!value) {
+    throw new Error(
+      `${envName} env var is not set. Generate with: openssl rand -base64 48`
+    );
+  }
+  if (value.length < 32) {
+    throw new Error(`${envName} must be at least 32 characters long`);
+  }
+  return Buffer.from(value).subarray(0, 32);
+}
 
 function getKey(): Buffer {
-  if (ENC_KEY.length < 32) {
-    throw new Error("TWO_FA_ENC_KEY must be at least 32 characters long");
-  }
-  return Buffer.from(ENC_KEY).subarray(0, 32);
+  return readKey("TWO_FA_ENC_KEY");
 }
 
 function getPhiKey(): Buffer {
-  if (PHI_FIELD_KEY.length < 32) {
-    throw new Error("PHI_FIELD_KEY must be at least 32 characters long");
-  }
-  return Buffer.from(PHI_FIELD_KEY).subarray(0, 32);
+  return readKey("PHI_FIELD_KEY");
 }
 
 export function encryptSecret(plaintext: string): string {

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, isAdmin } from "@/lib/auth/rbac";
 import { z } from "zod";
+import { internalError, badRequest } from "@/lib/api/errors";
+import { logPhiRead } from "@/lib/audit/phi-read";
 
 const IntakeFormResponsePayloadSchema = z
   .object({
@@ -154,12 +156,21 @@ export async function GET(
     const to = from + limit - 1;
     query = query.range(from, to).order("created_at", { ascending: false });
 
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: responses, error, count } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return badRequest("/api/intake-forms/[id]/responses", error);
     }
+
+    await logPhiRead({
+      request,
+      userId: user.id,
+      resourceType: "intake_form_responses",
+      resourceId: id,
+      patientId: patientId ?? (isUserAdmin ? null : user.id),
+      metadata: { count: count ?? (responses?.length || 0) },
+    });
 
     return NextResponse.json(
       {
@@ -174,7 +185,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/[id]/responses", error);
   }
 }
 
@@ -213,7 +224,7 @@ export async function POST(
     }
 
     // Verify form exists and is active
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: form, error: formError } = await supabase
       .from("intake_forms")
       .select("*")
@@ -248,7 +259,7 @@ export async function POST(
     }
 
     // Check if user already has a draft response
-    // @ts-ignore
+    // @ts-ignore - supabase type inference
     const { data: existingResponse } = await supabase
       .from("intake_form_responses")
       .select("*")
@@ -268,7 +279,7 @@ export async function POST(
         updated_at: new Date().toISOString(),
       };
 
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: updatedResponse, error: updateError } = await supabase
         .from("intake_form_responses")
         // @ts-ignore - Supabase type inference issue
@@ -278,7 +289,7 @@ export async function POST(
         .single();
 
       if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 400 });
+        return badRequest("/api/intake-forms/[id]/responses", updateError);
       }
 
       return NextResponse.json({ response: updatedResponse }, { status: 200 });
@@ -293,7 +304,7 @@ export async function POST(
         submitted_at: normalizedStatus === "submitted" ? new Date().toISOString() : null,
       };
 
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       const { data: newResponse, error: insertError } = await supabase
         .from("intake_form_responses")
         // @ts-ignore - Supabase type inference issue
@@ -302,12 +313,12 @@ export async function POST(
         .single();
 
       if (insertError) {
-        return NextResponse.json({ error: insertError.message }, { status: 400 });
+        return badRequest("/api/intake-forms/[id]/responses", insertError);
       }
 
       return NextResponse.json({ response: newResponse }, { status: 201 });
     }
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return internalError("/api/intake-forms/[id]/responses", error);
   }
 }

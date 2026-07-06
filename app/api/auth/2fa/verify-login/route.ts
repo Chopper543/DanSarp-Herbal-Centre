@@ -6,6 +6,17 @@ import { createHmac } from "crypto";
 import { decode as base32Decode } from "base32.js";
 import { decryptSecret, hashBackupCode } from "@/lib/security/crypto";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
+import { logAuditEvent } from "@/lib/audit/log";
+import { logger } from "@/lib/monitoring/logger";
+import { internalError } from "@/lib/api/errors";
+
+function requestInfoFrom(request: NextRequest) {
+  return {
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0] || request.headers.get("x-real-ip") || null,
+    userAgent: request.headers.get("user-agent"),
+    path: new URL(request.url).pathname,
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -85,7 +96,7 @@ export async function POST(request: NextRequest) {
     // @ts-ignore - otplib v13 requires crypto plugin configuration
     const totp = new TOTP({
       secret: decryptSecret(typedUserData.two_factor_secret),
-      // @ts-ignore
+      // @ts-ignore - supabase type inference
       createDigest: (algorithm: string, secret: string) => {
         const secretBuffer = Buffer.from(base32Decode(secret));
         return createHmac(algorithm, secretBuffer).digest();
@@ -98,6 +109,13 @@ export async function POST(request: NextRequest) {
     const isBackupCode = typedUserData.two_factor_backup_codes?.includes(hashBackupCode(code)) || false;
 
     if (!isValidTotp && !isBackupCode) {
+      await logAuditEvent({
+        userId: user.id,
+        action: "2fa_verify_login_failed",
+        resourceType: "user",
+        resourceId: user.id,
+        requestInfo: requestInfoFrom(request),
+      });
       return NextResponse.json(
         { error: "Invalid verification code" },
         { status: 400 }
@@ -109,7 +127,7 @@ export async function POST(request: NextRequest) {
       const updatedBackupCodes = typedUserData.two_factor_backup_codes.filter(
         (c: string) => c !== hashBackupCode(code)
       );
-      
+
       // @ts-ignore - Supabase type inference issue
       await supabase
         .from("users")
@@ -119,6 +137,20 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", user.id);
     }
+
+    await logAuditEvent({
+      userId: user.id,
+      action: "2fa_verify_login_success",
+      resourceType: "user",
+      resourceId: user.id,
+      metadata: {
+        method: isBackupCode ? "backup_code" : "totp",
+        backup_codes_remaining: isBackupCode
+          ? (typedUserData.two_factor_backup_codes?.length || 1) - 1
+          : (typedUserData.two_factor_backup_codes?.length || 0),
+      },
+      requestInfo: requestInfoFrom(request),
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -143,10 +175,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error: any) {
-    console.error("Error verifying 2FA for login:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to verify 2FA code" },
-      { status: 500 }
-    );
+    logger.error("Error verifying 2FA for login:", error);
+    return internalError("/api/auth/2fa/verify-login", error, "Failed to verify 2FA code");
   }
 }
