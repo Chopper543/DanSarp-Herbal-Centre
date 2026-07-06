@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { TOTP } from "otplib";
-import { createHmac } from "crypto";
-// @ts-ignore - base32.js doesn't have type definitions
-import { decode as base32Decode } from "base32.js";
+import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from "otplib";
 import { decryptSecret, hashBackupCode } from "@/lib/security/crypto";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 import { getUserRole, requires2FA } from "@/lib/auth/rbac";
@@ -76,17 +73,23 @@ export async function POST(request: NextRequest) {
       const typedUserData = userData as { two_factor_secret?: string | null; two_factor_backup_codes?: string[] | null } | null;
 
       if (typedUserData?.two_factor_secret) {
-        // @ts-ignore - otplib v13 requires crypto plugin configuration
+        // otplib v13's TOTP.verify() resolves to { valid, delta, epoch }
+        // (always a truthy object), not a boolean -- must destructure .valid
+        // rather than treat the result itself as one. It also THROWS (rather
+        // than resolving invalid) for a token that isn't 6 numeric digits --
+        // a backup code (8 hex chars) hits that every time, so a non-TOTP-
+        // shaped `code` must fall through to the backup-code check below.
         const totp = new TOTP({
           secret: decryptSecret(typedUserData.two_factor_secret),
-          // @ts-ignore - supabase type inference
-          createDigest: (algorithm: string, secret: string) => {
-            const secretBuffer = Buffer.from(base32Decode(secret));
-            return createHmac(algorithm, secretBuffer).digest();
-          },
-        } as any);
-        // @ts-ignore - otplib type definitions may be incorrect
-        const isValid = await totp.verify(code);
+          crypto: new NobleCryptoPlugin(),
+          base32: new ScureBase32Plugin(),
+        });
+        let isValid = false;
+        try {
+          ({ valid: isValid } = await totp.verify(code));
+        } catch {
+          isValid = false;
+        }
 
         // Also check backup codes
         const isBackupCode = typedUserData.two_factor_backup_codes?.includes(hashBackupCode(code));

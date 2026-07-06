@@ -55,6 +55,29 @@ Branch: `fix/2fa-server-binding`
 
 ---
 
+## 1b. RELEASE BLOCKER — 2FA mechanism blockers, found during B1 runtime verification
+
+Found while manually driving the running app end-to-end to verify the B1 cookie
+fix (B1's own cookie/session-binding logic verified clean — see Section 1). These
+are separate, pre-existing defects in the 2FA *mechanism itself*: right now no
+one can actually enroll in or log in with 2FA at all. Not part of the B1 branch.
+
+- [ ] **otplib v13 API mismatch — every real TOTP verify throws, 2FA enrollment/login is fully broken.** **S**
+  - Files: `app/api/auth/2fa/verify/route.ts:83-92`, `app/api/auth/2fa/verify-login/route.ts:97-108`, `app/api/auth/2fa/disable/route.ts:80-89` (same construction in `app/api/auth/2fa/generate/route.ts:67-79`, which doesn't crash only because `toURI()` never touches the crypto plugin).
+  - Repro: enroll a user, submit the correct current TOTP code to `POST /api/auth/2fa/verify` → 500 `{"error":"Failed to verify 2FA code"}`. Server log: `CryptoPluginMissingError: Crypto plugin is required` at `verify/route.ts:92`.
+  - Cause: `new TOTP({secret, createDigest, createRandomBytes})` is the otplib-v12 plugin shape (matches the still-present `@otplib/plugin-crypto-js@12.0.1` dependency); the installed `otplib@13.1.1` `TOTP` class requires a `crypto`/`base32` plugin object (`.hmac()`, `.randomBytes()`, `.constantTimeEqual()`), not raw functions. Confirmed against `package-lock.json`'s locked version (13.1.1) — not an install artifact.
+
+- [ ] **RLS gap — non-admin staff can never persist a 2FA secret, permanently stuck at `/setup-2fa`.** **S–M**
+  - File: `supabase/final_schema.sql:866` — `CREATE POLICY users_update_admin ON users FOR UPDATE USING ((select is_super_admin_or_admin()));`. No self-update policy exists for a user's own row.
+  - Repro: as a `doctor`-role user, call `POST /api/auth/2fa/generate` → 200 with a QR code, but a direct DB read immediately after shows `two_factor_secret IS NULL` (RLS silently drops the update; the route doesn't `.select()` so no error surfaces to the caller or logs). The identical call as `admin` role persists correctly.
+  - Effect: combined with `proxy.ts`'s `mustEnroll` gate, every staff role in `STAFF_ROLES_REQUIRING_2FA` other than `super_admin`/`admin` (doctor, nurse, content_manager, appointment_manager, finance_manager) redirects to `/setup-2fa` and can never complete it.
+
+- Minor, noted during the same pass (not blockers):
+  - `.env.local` has a placeholder `UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url`; `/api/health` logs a connection error for it (still returns 200 — optional var). Swap for a real value or unset before deploy.
+  - 4 disposable Supabase test accounts created during B1 verification (`verify-2fa-test-*@example.invalid`) were deleted from both `auth.users` and `public.users`; confirmed zero remaining via `listUsers()` + a table scan.
+
+---
+
 ## 2. AUDIT INTEGRITY CLUSTER (on the existing `fix/audit-log-integrity` branch)
 
 Do in order — each builds on the last.

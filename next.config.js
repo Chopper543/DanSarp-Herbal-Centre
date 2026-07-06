@@ -53,6 +53,12 @@ const nextConfig = {
     },
   },
 
+  // otplib's crypto/base32 plugins depend on @noble/hashes and @scure/base,
+  // which ship ESM-only (no CJS build). Webpack already handles this fine at
+  // runtime, but next/jest's transformIgnorePatterns reads this list to know
+  // which node_modules packages it's also allowed to transform for tests.
+  transpilePackages: ['@noble/hashes', '@scure/base'],
+
   // Note: Environment variable validation should be run manually before build
   // Use: npm run validate:env:strict
 };

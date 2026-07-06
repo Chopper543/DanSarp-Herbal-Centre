@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
-    "@otplib/plugin-crypto-js": "^12.0.1",
     "@react-three/drei": "^9.114.3",
     "@react-three/fiber": "^8.17.10",
     "@sentry/nextjs": "^10.62.0",
