@@ -16,6 +16,12 @@ The audit flagged these as *not line-by-line verified*. Confirm before building 
 
 ---
 
+## 0b. RELEASE BLOCKER — production build is broken
+
+- [ ] **`next build` fails at "Collecting page data" with `ENOENT: .next/browser/default-stylesheet.css`; confirmed identical on the base branch, so pre-existing and unrelated to any 2FA work. App cannot produce a production build.** Undiagnosed.
+
+---
+
 ## 1. RELEASE BLOCKER — 2FA bypass (do this first, standalone branch)
 
 Branch: `fix/2fa-server-binding`
