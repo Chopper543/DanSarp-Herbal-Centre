@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logger } from "@/lib/monitoring/logger";
 import { buildWebhookMetadata } from "@/lib/payments/webhook-idempotency";
-import { claimWebhookEvent } from "@/lib/payments/webhook-events";
+import {
+  acquireWebhookEvent,
+  markWebhookProcessed,
+  markWebhookFailed,
+} from "@/lib/payments/webhook-events";
+import { ensureAppointmentForCompletedPayment } from "@/lib/payments/ensure-appointment";
 import {
   safeBearerEqual,
   verifyGhanaRailsSignature,
@@ -23,51 +28,6 @@ type GhanaRailsWebhookPayload = {
   status: "pending" | "completed" | "failed" | "processing";
   metadata?: Record<string, any>;
 };
-
-async function createAppointmentFromPayment(supabase: any, payment: any) {
-  const metadata = payment.metadata as any;
-  if (
-    !metadata?.appointment_data ||
-    payment.appointment_id ||
-    payment.status !== "completed" ||
-    metadata.appointment_data.auto_create === false
-  ) {
-    return null;
-  }
-
-  const appointmentData = metadata.appointment_data;
-
-  const { data: appointment, error: createError } = await supabase
-    .from("appointments")
-    .insert({
-      user_id: payment.user_id,
-      branch_id: appointmentData.branch_id,
-      appointment_date: appointmentData.appointment_date,
-      treatment_type: appointmentData.treatment_type,
-      notes: appointmentData.notes || null,
-      status: "pending",
-    })
-    .select()
-    .single();
-
-  if (createError || !appointment) {
-    logger.error("Failed to create appointment from Ghana rails payment", createError);
-    return null;
-  }
-
-  const { error: linkError } = await supabase
-    .from("payments")
-    .update({ appointment_id: appointment.id })
-    .eq("id", payment.id);
-
-  if (linkError) {
-    await supabase.from("appointments").delete().eq("id", appointment.id);
-    logger.error("Failed to link Ghana rails payment to appointment", linkError);
-    return null;
-  }
-
-  return appointment;
-}
 
 export async function POST(request: NextRequest) {
   if (!WEBHOOK_SECRET) {
@@ -129,27 +89,38 @@ export async function POST(request: NextRequest) {
     body.event_id?.toString() ||
     `${eventType}:${provider_transaction_id}:${status}`;
 
-  // 4. Atomic dedup before any payment lookup. Same insert-first pattern as
-  //    the Paystack/Flutterwave router.
+  // 4. Atomic acquire (claim-or-reclaim) before any payment lookup. A row is
+  //    only 'processed' after the full path below succeeds, so a post-claim
+  //    failure leaves the event reclaimable and the retry reprocesses.
+  let acquire;
   try {
-    const claim = await claimWebhookEvent(supabase, {
+    acquire = await acquireWebhookEvent(supabase, {
       provider: "ghana_rails",
       eventId,
       eventType,
       payload: body as unknown as Record<string, unknown>,
     });
-    if (claim.duplicate) {
-      return NextResponse.json(
-        { message: "Duplicate webhook ignored", duplicate: true },
-        { status: 200 }
-      );
-    }
   } catch (err) {
-    logger.error("Ghana-Rails webhook claim failed", err);
+    logger.error("Ghana-Rails webhook acquire failed", err);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
+  if (acquire.result === "duplicate_processed") {
+    return NextResponse.json({ message: "Duplicate webhook ignored", duplicate: true }, { status: 200 });
+  }
+  if (acquire.result === "dead") {
+    logger.error("Ghana-Rails webhook event exceeded max attempts; marked dead", {
+      event_id: eventId,
+      attempts: acquire.attempts,
+    });
+    return NextResponse.json({ message: "Webhook given up", dead: true }, { status: 200 });
+  }
+  if (acquire.result === "in_flight") {
+    return NextResponse.json({ error: "Webhook already being processed" }, { status: 503 });
+  }
+  // acquire.result === "acquired" → process it.
 
-  // 5. Look up payment and apply update.
+  // 5. Look up payment. Failures mark the event failed (not processed) so it is
+  //    reprocessed on retry.
   const { data: payment, error } = await supabase
     .from("payments")
     .select("*")
@@ -157,12 +128,14 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !payment) {
-    return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    await markWebhookFailed(supabase, "ghana_rails", eventId, "payment_not_found");
+    return NextResponse.json({ error: "Payment not found" }, { status: 503 });
   }
 
   const paymentRecord = payment as any;
   if (paymentRecord.provider !== "custom") {
-    return NextResponse.json({ error: "Invalid provider for this webhook" }, { status: 400 });
+    await markWebhookFailed(supabase, "ghana_rails", eventId, "provider_mismatch");
+    return NextResponse.json({ error: "Invalid provider for this webhook" }, { status: 409 });
   }
 
   const nextStatus =
@@ -180,35 +153,37 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  const { error: updateError } = await supabase
-    .from("payments")
-    .update({
-      status: nextStatus,
-      metadata: mergedMetadata,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("provider_transaction_id", provider_transaction_id);
-
-  if (updateError) {
-    logger.error("Ghana-Rails payment update failed", updateError);
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
-  }
-
-  if (nextStatus === "completed") {
-    const { data: updatedPayment } = await supabase
+  // 6. Process, then mark processed ONLY after the FULL path (incl. appointment)
+  //    succeeds. Any throw → mark failed + 5xx → retry reprocesses.
+  try {
+    const { error: updateError } = await supabase
       .from("payments")
-      .select("*")
-      .eq("id", paymentRecord.id)
-      .single();
+      .update({
+        status: nextStatus,
+        metadata: mergedMetadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("provider_transaction_id", provider_transaction_id);
+    if (updateError) {
+      throw new Error(`Ghana-Rails payment update failed: ${updateError.message}`);
+    }
 
-    if (updatedPayment) {
-      try {
-        await createAppointmentFromPayment(supabase, updatedPayment);
-      } catch (err) {
-        logger.error("Ghana-Rails appointment creation failed", err);
+    if (nextStatus === "completed") {
+      const { data: updatedPayment } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("id", paymentRecord.id)
+        .single();
+      if (updatedPayment) {
+        await ensureAppointmentForCompletedPayment(supabase, updatedPayment);
       }
     }
-  }
 
-  return NextResponse.json({ message: "Payment updated", status: nextStatus });
+    await markWebhookProcessed(supabase, "ghana_rails", eventId);
+    return NextResponse.json({ message: "Payment updated", status: nextStatus });
+  } catch (err: any) {
+    logger.error("Ghana-Rails webhook processing failed", err);
+    await markWebhookFailed(supabase, "ghana_rails", eventId, err?.message ?? String(err));
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
+  }
 }

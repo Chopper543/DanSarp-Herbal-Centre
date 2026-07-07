@@ -1468,6 +1468,15 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
   payload JSONB,
   received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Processing lifecycle (see migration 20260707000002): a row records a CLAIM,
+  -- not a completion. Only 'processed' means done; 'failed'/lease-expired
+  -- 'processing' are reclaimable; 'dead' is a poison event that hit MAX_ATTEMPTS.
+  status TEXT NOT NULL DEFAULT 'processing'
+    CHECK (status IN ('processing','processed','failed','dead')),
+  attempts INT NOT NULL DEFAULT 1,
+  last_error TEXT,
+  processed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT webhook_events_provider_event_id_key UNIQUE (provider, event_id)
 );
 
@@ -1475,6 +1484,8 @@ CREATE INDEX IF NOT EXISTS webhook_events_payment_id_idx
   ON webhook_events (payment_id);
 CREATE INDEX IF NOT EXISTS webhook_events_received_at_idx
   ON webhook_events (received_at);
+CREATE INDEX IF NOT EXISTS webhook_events_status_updated_idx
+  ON webhook_events (status, updated_at);
 
 ALTER TABLE webhook_events ENABLE ROW LEVEL SECURITY;
 
@@ -1484,6 +1495,69 @@ CREATE POLICY webhook_events_service_role_only ON webhook_events
   TO service_role
   USING (true)
   WITH CHECK (true);
+
+-- Atomic acquire-or-reclaim for webhook processing (see migration
+-- 20260707000002). Touches ONLY webhook_events. Returns what the caller should
+-- do: 'acquired' (process), 'duplicate_processed' (skip), 'in_flight' (defer),
+-- 'dead' (poison, skip + alert).
+CREATE OR REPLACE FUNCTION acquire_webhook_event(
+  p_provider     TEXT,
+  p_event_id     TEXT,
+  p_event_type   TEXT,
+  p_payload      JSONB,
+  p_max_attempts INT,
+  p_lease        INTERVAL
+) RETURNS TABLE (result TEXT, attempts INT)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  v_row webhook_events%ROWTYPE;
+BEGIN
+  BEGIN
+    INSERT INTO webhook_events (provider, event_id, event_type, payload, status, attempts, updated_at)
+    VALUES (p_provider, p_event_id, p_event_type, p_payload, 'processing', 1, NOW());
+    result := 'acquired'; attempts := 1; RETURN NEXT; RETURN;
+  EXCEPTION WHEN unique_violation THEN
+    -- fall through to reclaim decision
+  END;
+
+  SELECT * INTO v_row FROM webhook_events
+    WHERE provider = p_provider AND event_id = p_event_id
+    FOR UPDATE;
+
+  IF v_row.status = 'processed' THEN
+    result := 'duplicate_processed'; attempts := v_row.attempts; RETURN NEXT; RETURN;
+  ELSIF v_row.status = 'dead' THEN
+    result := 'dead'; attempts := v_row.attempts; RETURN NEXT; RETURN;
+  ELSIF v_row.status = 'processing' AND v_row.updated_at >= NOW() - p_lease THEN
+    result := 'in_flight'; attempts := v_row.attempts; RETURN NEXT; RETURN;
+  ELSE
+    IF v_row.attempts >= p_max_attempts THEN
+      UPDATE webhook_events SET status = 'dead', updated_at = NOW() WHERE id = v_row.id;
+      result := 'dead'; attempts := v_row.attempts; RETURN NEXT; RETURN;
+    ELSE
+      UPDATE webhook_events
+         SET status = 'processing', attempts = v_row.attempts + 1, updated_at = NOW()
+       WHERE id = v_row.id;
+      result := 'acquired'; attempts := v_row.attempts + 1; RETURN NEXT; RETURN;
+    END IF;
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION acquire_webhook_event(TEXT, TEXT, TEXT, JSONB, INT, INTERVAL) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION acquire_webhook_event(TEXT, TEXT, TEXT, JSONB, INT, INTERVAL) TO service_role;
+
+-- Idempotent appointment guard: at most one appointment per originating payment.
+-- ALTER (not inline in the appointments table above) because appointments is
+-- defined before payments. See migration 20260707000002.
+ALTER TABLE appointments
+  ADD COLUMN IF NOT EXISTS payment_id UUID REFERENCES payments(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS appointments_one_per_payment
+  ON appointments (payment_id) WHERE payment_id IS NOT NULL;
+
 -- Phase 3 / Task 28 — clinical_notes become append-only.
 --
 -- An UPDATE in the API layer is now translated to: insert a new note row
