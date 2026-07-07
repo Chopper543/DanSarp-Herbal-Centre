@@ -1694,8 +1694,14 @@ DROP POLICY IF EXISTS refund_requests_select_admin ON refund_requests;
 CREATE POLICY refund_requests_select_admin ON refund_requests
   FOR SELECT USING ((select is_finance_staff_user()));
 DROP POLICY IF EXISTS refund_requests_insert_admin ON refund_requests;
+-- INSERT is finance-staff-only. Legitimate refund_requests are created solely via
+-- the service-role client (appointment-cancellation auto-create + refunds API),
+-- which bypasses RLS; there is no legitimate user-scoped insert path. A prior
+-- `OR requested_by = auth.uid()` branch let any authenticated patient forge an
+-- off-policy refund request against any payment_id — see migration
+-- 20260707000001_refund_requests_insert_finance_only.sql.
 CREATE POLICY refund_requests_insert_admin ON refund_requests
-  FOR INSERT WITH CHECK ((select is_finance_staff_user()) OR requested_by = (select auth.uid()));
+  FOR INSERT WITH CHECK ((select is_finance_staff_user()));
 DROP POLICY IF EXISTS refund_requests_update_admin ON refund_requests;
 CREATE POLICY refund_requests_update_admin ON refund_requests
   FOR UPDATE USING ((select is_finance_staff_user()));
