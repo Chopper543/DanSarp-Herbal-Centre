@@ -204,8 +204,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Atomic claim: approved -> processing. If 0 rows match, another operator
-    // already claimed/processed it.
+    // P1 — Atomic claim: approved -> processing. If 0 rows match, another operator
+    // already claimed/processed it. This single conditional UPDATE serializes
+    // concurrent `process` calls, so two workers can never both reach the provider.
     const { data: claimed } = await service
       .from("refund_requests")
       .update({ status: "processing", processed_by: user.id, updated_at: nowIso() })
@@ -220,9 +221,79 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Terminal-state routing. The provider call is the point of no return:
+    //   'failed'               → money definitely did NOT move (PRE-provider only);
+    //                            an operator can safely re-approve + retry.
+    //   'needs_reconciliation' → provider MAY have moved money; `process` refuses
+    //                            to re-run it (claim requires 'approved'), so it can
+    //                            never be blindly re-refunded. Requires manual/ops
+    //                            reconciliation.
+    const markTerminal = async (
+      status: "failed" | "needs_reconciliation",
+      failureReason: string,
+      providerRefundId?: string | null
+    ) => {
+      await service
+        .from("refund_requests")
+        .update({
+          status,
+          processed_by: user.id,
+          failure_reason: failureReason.slice(0, 500),
+          ...(providerRefundId ? { provider_refund_id: providerRefundId } : {}),
+          updated_at: nowIso(),
+        })
+        .eq("id", request_id);
+      await audit(
+        user.id,
+        status === "failed" ? "refund_failed" : "refund_needs_reconciliation",
+        refund,
+        request,
+        { failure_reason: failureReason }
+      );
+    };
+
+    // Fail-fast BEFORE the provider call: an impossible refund never reaches the
+    // provider and money has not moved → 'failed'.
     try {
-      let providerRefundId: string | null = null;
+      computeSettlement(
+        { amount: Number(pay.amount), refunded_amount: Number(pay.refunded_amount || 0) },
+        Number(refund.amount)
+      );
+    } catch (preErr: any) {
+      await markTerminal("failed", `would_exceed: ${preErr?.message || preErr}`);
+      return NextResponse.json(
+        { error: "Refund exceeds the captured amount.", code: "REFUND_EXCEEDS_CAPTURED" },
+        { status: 422 }
+      );
+    }
+
+    // P2 — Record provider-call INTENT durably BEFORE calling the provider, so a
+    // crash mid-call is detectable (attempted_at set ⇒ treat as maybe-money-moved).
+    // If this write fails, the provider was NOT called → 'failed'.
+    const { error: intentError } = await service
+      .from("refund_requests")
+      .update({
+        provider_call_attempted_at: nowIso(),
+        idempotency_key: request_id,
+        updated_at: nowIso(),
+      })
+      .eq("id", request_id)
+      .eq("status", "processing");
+    if (intentError) {
+      await markTerminal("failed", `intent_write_failed: ${intentError.message}`);
+      return NextResponse.json(
+        { error: "Refund processing failed before contacting the provider." },
+        { status: 502 }
+      );
+    }
+
+    // P3 — Provider call. ANY failure here is AMBIGUOUS (a throw/timeout may mean
+    // the refund actually went through) → 'needs_reconciliation', NEVER 'failed'.
+    let providerRefundId: string | null = null;
+    try {
       if (isManualRail) {
+        // Manual rail: the human already sent the money out-of-band; the payout
+        // reference IS the confirmation. No provider HTTP call.
         providerRefundId = payout_reference!;
       } else {
         const resp = await paymentService.refundPayment(
@@ -235,59 +306,52 @@ export async function PATCH(request: NextRequest) {
         }
         providerRefundId = resp.provider_transaction_id || resp.id || null;
       }
-
-      const settlement = computeSettlement(
-        { amount: Number(pay.amount), refunded_amount: Number(pay.refunded_amount || 0) },
-        Number(refund.amount)
+    } catch (providerError: any) {
+      const reason = String(providerError?.message || providerError).slice(0, 500);
+      logger.error("Refund provider call failed — needs reconciliation", providerError, { request_id });
+      await markTerminal("needs_reconciliation", `provider_call_failed: ${reason}`);
+      return NextResponse.json(
+        {
+          error:
+            "Refund could not be confirmed with the provider and needs reconciliation. It will NOT be retried automatically.",
+          code: "REFUND_NEEDS_RECONCILIATION",
+        },
+        { status: 502 }
       );
+    }
 
-      // Bumping refunded_amount drives the payment_ledger refund entry (trigger).
-      const { error: payUpdateError } = await service
-        .from("payments")
-        .update({
-          refunded_amount: settlement.newRefundedAmount,
-          status: settlement.fullyRefunded ? "refunded" : pay.status,
-          updated_at: nowIso(),
-        })
-        .eq("id", pay.id);
-      if (payUpdateError) throw new Error(payUpdateError.message);
-
-      const { data: processed, error: finalizeError } = await service
-        .from("refund_requests")
-        .update({
-          status: "processed",
-          provider_refund_id: providerRefundId,
-          processed_by: user.id,
-          processed_at: nowIso(),
-          updated_at: nowIso(),
-        })
-        .eq("id", request_id)
-        .select()
-        .single();
+    // P4 — Atomic finalize: bump payment + mark processed in ONE transaction
+    // (finalize_refund RPC). If this fails, the provider ALREADY moved money →
+    // 'needs_reconciliation' (store the provider refund id in the trail), NEVER
+    // 'failed'.
+    try {
+      const { data: finalized, error: finalizeError } = await service.rpc("finalize_refund", {
+        p_request_id: request_id,
+        p_provider_refund_id: providerRefundId,
+      });
       if (finalizeError) throw new Error(finalizeError.message);
+      const processed = Array.isArray(finalized) ? finalized[0] : finalized;
 
       await audit(user.id, "refund_processed", refund, request, {
         amount: refund.amount,
         provider: pay.provider,
-        fully_refunded: settlement.fullyRefunded,
         manual: isManualRail,
       });
       return NextResponse.json({ refund: processed }, { status: 200 });
-    } catch (processError: any) {
-      const failureReason = String(processError?.message || processError).slice(0, 500);
-      logger.error("Refund processing failed", processError, { request_id });
-      await service
-        .from("refund_requests")
-        .update({
-          status: "failed",
-          processed_by: user.id,
-          failure_reason: failureReason,
-          updated_at: nowIso(),
-        })
-        .eq("id", request_id);
-      await audit(user.id, "refund_failed", refund, request, { failure_reason: failureReason });
+    } catch (finalizeError: any) {
+      const reason = String(finalizeError?.message || finalizeError).slice(0, 500);
+      logger.error(
+        "Refund finalize failed after provider succeeded — needs reconciliation",
+        finalizeError,
+        { request_id }
+      );
+      await markTerminal("needs_reconciliation", `finalize_failed: ${reason}`, providerRefundId);
       return NextResponse.json(
-        { error: "Refund processing failed. The request was marked failed and can be retried." },
+        {
+          error:
+            "Refund was sent to the provider but could not be recorded; it needs reconciliation and will NOT be retried automatically.",
+          code: "REFUND_NEEDS_RECONCILIATION",
+        },
         { status: 502 }
       );
     }
