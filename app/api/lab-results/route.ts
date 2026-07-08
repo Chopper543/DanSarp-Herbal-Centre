@@ -352,20 +352,37 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Update lab result
-    const updatePayload = {
-      ...updateData,
-      normal_range: updateData.normal_range
-        ? sanitizeText(updateData.normal_range)
-        : updateData.normal_range ?? null,
-      units: updateData.units ? sanitizeText(updateData.units) : updateData.units ?? null,
-      notes: updateData.notes ? sanitizeText(updateData.notes) : updateData.notes ?? null,
-      doctor_notes: updateData.doctor_notes
-        ? sanitizeText(updateData.doctor_notes)
-        : updateData.doctor_notes ?? null,
+    // Allowlist of client-mutable fields. Built explicitly (NOT `...updateData`)
+    // so patient_id + appointment_id can never be reassigned via a general edit
+    // (mis-attribution). The Zod schema still accepts them (so existing edit forms
+    // that resend the unchanged values don't 400); they are simply never written.
+    // Only keys the client actually sent are applied (partial update).
+    const MUTABLE_LAB_FIELDS = [
+      "test_name",
+      "test_type",
+      "ordered_date",
+      "completed_date",
+      "results",
+      "normal_range",
+      "units",
+      "file_urls",
+      "status",
+      "notes",
+      "doctor_notes",
+    ] as const;
+
+    const updatePayload: Record<string, any> = {
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
+    for (const key of MUTABLE_LAB_FIELDS) {
+      if (key in updateData) updatePayload[key] = (updateData as any)[key];
+    }
+    for (const key of ["normal_range", "units", "notes", "doctor_notes"] as const) {
+      if (key in updatePayload) {
+        updatePayload[key] = updatePayload[key] ? sanitizeText(updatePayload[key]) : null;
+      }
+    }
 
     const { data: labResult, error } = await supabase
       .from("lab_results")

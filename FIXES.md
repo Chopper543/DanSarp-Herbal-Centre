@@ -176,6 +176,17 @@ Two follow-ups deliberately deferred from `fix/refund-atomic-finalize` (which ma
 
 ---
 
+## 5f. HARDENING — clinical record immutable-field defense-in-depth (deferred from the allowlist fix)
+
+`fix/clinical-patient-id-immutable` made the three clinical PUT/amendment handlers allowlist mutable fields, so `patient_id`/`appointment_id` (and `doctor_id`, note `is_template`/`template_id`/`note_type`, prescription `refills_original`) can no longer be reassigned via a general edit. Two defense-in-depth layers were deliberately deferred.
+
+- [ ] **DB-layer `WITH CHECK` constraining immutable fields — this is the ONLY backstop, and it does not exist today.** **M**
+  - Q4 of the investigation proved it: the clinical UPDATE policies are `FOR UPDATE USING (auth.uid()=doctor_id OR is_*_staff_user())` with **no `WITH CHECK`** (`final_schema.sql:957,983,989`), so RLS gates *who* edits but never *which patient* the row lands on — a `patient_id` reassignment is NOT caught at the DB layer (reproduced against real RLS in `__tests__/security-clinical-patient-immutable.dbtest.ts`). The app allowlist is now the sole line of defense. Add a DB backstop so a future handler regression (or any direct service-role write) can't silently re-target a record: a `BEFORE UPDATE` trigger that rejects a change to `patient_id`/`appointment_id`/`doctor_id` (`OLD.x IS DISTINCT FROM NEW.x`), or a `WITH CHECK` tied to the pre-update identity. (An INSERT-time guard is trickier for the clinical_notes amendment chain — a trigger keyed on `amended_from_id` matching the parent's `patient_id` is the shape.)
+- [ ] **Remove the editable patient field from the three edit forms.** **S**
+  - `PrescriptionBuilder.tsx:159`, `LabResultForm.tsx:184`, `SOAPNoteEditor.tsx` keep the patient selector editable on the EDIT screen (a create-time affordance left on). The handler now ignores a changed `patient_id`, but the UI still lets a user *think* they can re-file a record under another patient (and silently sends the unchanged id). Disable/lock the patient field when editing an existing record. Purely UX/defense-in-depth — the security hole is already closed server-side.
+
+---
+
 ## 6. LOW / Housekeeping
 
 - [ ] **L1** — Delete working-tree artifacts `all-fixes.patch` and `.env.local.bak.*` from repo root.

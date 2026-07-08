@@ -448,18 +448,37 @@ export async function PUT(request: NextRequest) {
       updateData.end_date = start.toISOString().split("T")[0];
     }
 
-    // Update prescription
-    const updatePayload = {
-      ...updateData,
-      instructions: updateData.instructions
-        ? sanitizeText(updateData.instructions)
-        : updateData.instructions ?? null,
-      doctor_notes: updateData.doctor_notes
-        ? sanitizeText(updateData.doctor_notes)
-        : updateData.doctor_notes ?? null,
+    // Allowlist of client-mutable fields. Built explicitly (NOT `...updateData`)
+    // so identity/provenance can never be reassigned via a general edit:
+    // patient_id + appointment_id (mis-attribution) and refills_original (silent
+    // refill inflation) are intentionally omitted — the Zod schema still accepts
+    // them (so existing edit forms that resend the unchanged values don't 400),
+    // they are simply never written. Only keys the client actually sent are
+    // applied (partial update).
+    const MUTABLE_PRESCRIPTION_FIELDS = [
+      "herbs_formulas",
+      "instructions",
+      "doctor_notes",
+      "duration_days",
+      "expiry_date",
+      "start_date",
+      "end_date",
+      "status",
+    ] as const;
+
+    const updatePayload: Record<string, any> = {
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
+    for (const key of MUTABLE_PRESCRIPTION_FIELDS) {
+      if (key in updateData) updatePayload[key] = (updateData as any)[key];
+    }
+    if ("instructions" in updatePayload) {
+      updatePayload.instructions = updatePayload.instructions ? sanitizeText(updatePayload.instructions) : null;
+    }
+    if ("doctor_notes" in updatePayload) {
+      updatePayload.doctor_notes = updatePayload.doctor_notes ? sanitizeText(updatePayload.doctor_notes) : null;
+    }
 
     const { data: prescription, error } = await supabase
       .from("prescriptions")

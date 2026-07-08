@@ -371,13 +371,17 @@ export async function PUT(request: NextRequest) {
       ...preservedFields
     } = typed;
 
-    const amendmentRow = {
+    // Carry the existing row forward (preservedFields), then layer ONLY the
+    // client-mutable clinical fields from updateData. `...updateData` is
+    // deliberately NOT spread — that let updateData override provenance. Frozen
+    // (carried from the original, never taken from updateData): identity/
+    // provenance patient_id/appointment_id/doctor_id, and classification
+    // note_type/is_template/template_id (flipping a note to a template would hide
+    // it from the default, is_template=false, list). Provenance is RE-PINNED below
+    // because this is an INSERT of a full row — omission alone isn't enough. The
+    // Zod schema still accepts the frozen fields (no 400 for edit forms); ignored.
+    const amendmentRow: Record<string, any> = {
       ...preservedFields,
-      ...updateData,
-      subjective: updateData.subjective ? sanitizeText(updateData.subjective) : updateData.subjective ?? preservedFields.subjective ?? null,
-      objective: updateData.objective ? sanitizeText(updateData.objective) : updateData.objective ?? preservedFields.objective ?? null,
-      assessment: updateData.assessment ? sanitizeText(updateData.assessment) : updateData.assessment ?? preservedFields.assessment ?? null,
-      plan: updateData.plan ? sanitizeText(updateData.plan) : updateData.plan ?? preservedFields.plan ?? null,
       version: (typeof oldVersion === "number" ? oldVersion : 1) + 1,
       amended_from_id: id,
       is_amendment: true,
@@ -385,6 +389,19 @@ export async function PUT(request: NextRequest) {
       created_by: user.id,
       updated_by: user.id,
     };
+    if ("subjective" in updateData) amendmentRow.subjective = updateData.subjective ? sanitizeText(updateData.subjective) : null;
+    if ("objective" in updateData) amendmentRow.objective = updateData.objective ? sanitizeText(updateData.objective) : null;
+    if ("assessment" in updateData) amendmentRow.assessment = updateData.assessment ? sanitizeText(updateData.assessment) : null;
+    if ("plan" in updateData) amendmentRow.plan = updateData.plan ? sanitizeText(updateData.plan) : null;
+    if ("vital_signs" in updateData) amendmentRow.vital_signs = updateData.vital_signs;
+    if ("diagnosis_codes" in updateData) amendmentRow.diagnosis_codes = updateData.diagnosis_codes;
+    if ("attachments" in updateData) amendmentRow.attachments = updateData.attachments;
+
+    // RE-PIN provenance from the ORIGINAL row so updateData can never re-target the
+    // amended note to another patient/encounter/clinician.
+    amendmentRow.patient_id = preservedFields.patient_id;
+    amendmentRow.appointment_id = preservedFields.appointment_id;
+    amendmentRow.doctor_id = preservedFields.doctor_id;
 
     const { data: note, error } = await supabase
       .from("clinical_notes")
