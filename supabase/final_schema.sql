@@ -777,6 +777,86 @@ BEGIN PERFORM set_config('search_path','public,extensions',true); NEW.updated_at
 CREATE OR REPLACE FUNCTION update_health_metrics_updated_at() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN PERFORM set_config('search_path','public,extensions',true); NEW.updated_at := NOW(); RETURN NEW; END; $$;
 
+-- Clinical record identity is immutable (defense-in-depth, FIXES.md §5f). See
+-- migration 20260708000001_clinical_immutability_triggers.sql for full rationale.
+-- These are triggers (not RLS WITH CHECK) so the guard also binds table-owner /
+-- service-role writers that bypass RLS but still fire BEFORE triggers.
+CREATE OR REPLACE FUNCTION clinical_records_freeze_identity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, extensions
+AS $$
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+
+  IF NEW.patient_id IS DISTINCT FROM OLD.patient_id THEN
+    RAISE EXCEPTION
+      'clinical record identity is immutable: patient_id cannot be changed on % (record %)',
+      TG_TABLE_NAME, OLD.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF NEW.appointment_id IS DISTINCT FROM OLD.appointment_id THEN
+    RAISE EXCEPTION
+      'clinical record identity is immutable: appointment_id cannot be changed on % (record %)',
+      TG_TABLE_NAME, OLD.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF NEW.doctor_id IS DISTINCT FROM OLD.doctor_id THEN
+    RAISE EXCEPTION
+      'clinical record identity is immutable: doctor_id cannot be changed on % (record %)',
+      TG_TABLE_NAME, OLD.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- An amendment (amended_from_id set) must inherit the parent note's identity; a
+-- create-INSERT (amended_from_id NULL) establishes identity freely.
+CREATE OR REPLACE FUNCTION clinical_notes_amendment_identity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, extensions
+AS $$
+DECLARE
+  v_patient_id     UUID;
+  v_appointment_id UUID;
+  v_doctor_id      UUID;
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+
+  IF NEW.amended_from_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT patient_id, appointment_id, doctor_id
+    INTO v_patient_id, v_appointment_id, v_doctor_id
+    FROM clinical_notes
+    WHERE id = NEW.amended_from_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION
+      'clinical note amendment references a non-existent parent note %',
+      NEW.amended_from_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  IF NEW.patient_id IS DISTINCT FROM v_patient_id
+     OR NEW.appointment_id IS DISTINCT FROM v_appointment_id
+     OR NEW.doctor_id IS DISTINCT FROM v_doctor_id THEN
+    RAISE EXCEPTION
+      'clinical note amendment identity must match parent note % (patient_id/appointment_id/doctor_id)',
+      NEW.amended_from_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 -- Triggers
 CREATE TRIGGER audit_users AFTER INSERT OR UPDATE OR DELETE ON users FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 CREATE TRIGGER audit_appointments AFTER INSERT OR UPDATE OR DELETE ON appointments FOR EACH ROW EXECUTE FUNCTION create_audit_log();
@@ -791,6 +871,20 @@ CREATE TRIGGER audit_lab_results AFTER INSERT OR UPDATE OR DELETE ON lab_results
 CREATE TRIGGER audit_prescriptions AFTER INSERT OR UPDATE OR DELETE ON prescriptions FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 CREATE TRIGGER audit_patient_records AFTER INSERT OR UPDATE OR DELETE ON patient_records FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 CREATE TRIGGER audit_intake_form_responses AFTER INSERT OR UPDATE OR DELETE ON intake_form_responses FOR EACH ROW EXECUTE FUNCTION create_audit_log();
+
+-- Clinical record identity-freeze guards (FIXES.md §5f). BEFORE UPDATE on the three
+-- clinical tables rejects any patient_id/appointment_id/doctor_id reassignment;
+-- BEFORE INSERT on clinical_notes forces an amendment to inherit its parent's
+-- identity. (clinical_notes.amended_from_id is added by the ALTER TABLE further
+-- below; plpgsql resolves the column at runtime, so definition order is fine.)
+DROP TRIGGER IF EXISTS prescriptions_freeze_identity ON prescriptions;
+CREATE TRIGGER prescriptions_freeze_identity BEFORE UPDATE ON prescriptions FOR EACH ROW EXECUTE FUNCTION clinical_records_freeze_identity();
+DROP TRIGGER IF EXISTS lab_results_freeze_identity ON lab_results;
+CREATE TRIGGER lab_results_freeze_identity BEFORE UPDATE ON lab_results FOR EACH ROW EXECUTE FUNCTION clinical_records_freeze_identity();
+DROP TRIGGER IF EXISTS clinical_notes_freeze_identity ON clinical_notes;
+CREATE TRIGGER clinical_notes_freeze_identity BEFORE UPDATE ON clinical_notes FOR EACH ROW EXECUTE FUNCTION clinical_records_freeze_identity();
+DROP TRIGGER IF EXISTS clinical_notes_amendment_identity ON clinical_notes;
+CREATE TRIGGER clinical_notes_amendment_identity BEFORE INSERT ON clinical_notes FOR EACH ROW EXECUTE FUNCTION clinical_notes_amendment_identity();
 
 CREATE TRIGGER messages_updated_at BEFORE UPDATE ON messages FOR EACH ROW EXECUTE FUNCTION update_messages_updated_at();
 CREATE TRIGGER patient_age_before_insupd BEFORE INSERT OR UPDATE ON patient_records FOR EACH ROW EXECUTE FUNCTION update_patient_age();
