@@ -43,12 +43,6 @@ const ClinicalNoteUpdateSchema = ClinicalNoteSchema.partial()
   })
   .strict();
 
-const ClinicalNoteDeleteSchema = z
-  .object({
-    deleted_reason: z.string().min(1).max(2000).optional(),
-  })
-  .partial();
-
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -454,84 +448,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = await getUserRole();
-    const isSystemAdmin = userRole === "super_admin" || userRole === "admin";
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "Clinical note ID is required" }, { status: 400 });
-    }
-
-    // Check if note exists
-    const { data: existingNote, error: fetchError } = await supabase
-      .from("clinical_notes")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existingNote) {
-      return NextResponse.json({ error: "Clinical note not found" }, { status: 404 });
-    }
-
-    // Only admins can delete clinical notes
-    if (!isSystemAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    if ((existingNote as any)?.deleted_at) {
-      return NextResponse.json({ error: "Note is already deleted" }, { status: 409 });
-    }
-
-    const deletedReason = searchParams.get("reason") || null;
-
-    // Soft delete: preserve the row for legal/medical record retention.
-    const { data: deleted, error } = await supabase
-      .from("clinical_notes")
-      // @ts-ignore - Supabase type inference issue
-      .update({
-        deleted_at: new Date().toISOString(),
-        deleted_by: user.id,
-        deleted_reason: deletedReason ? sanitizeText(deletedReason) : null,
-      } as any)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      logger.error("Failed to soft-delete clinical note", error);
-      return NextResponse.json({ error: "Unable to delete clinical note" }, { status: 400 });
-    }
-
-    await logAuditEvent({
-      userId: user.id,
-      action: "delete_clinical_note",
-      resourceType: "clinical_note",
-      resourceId: id,
-      oldData: existingNote as Record<string, any>,
-      newData: deleted as Record<string, any>,
-      metadata: {
-        patient_id: (existingNote as any)?.patient_id,
-        soft_delete: true,
-        deleted_reason: deletedReason,
-      },
-      requestInfo: requestInfoFrom(request),
-    });
-
-    return NextResponse.json({ message: "Clinical note deleted successfully" }, { status: 200 });
-  } catch (error: any) {
-    return internalError("/api/clinical-notes", error);
-  }
-}
+// NOTE: DELETE is intentionally NOT exported here. Soft-delete lives on the
+// canonical per-note path, DELETE /api/clinical-notes/[id] (the path the admin
+// UI calls). The former collection DELETE was dead (no caller) — mirror of the
+// removed collection-vs-[id] PUT split; see FIXES.md hard-delete item.
