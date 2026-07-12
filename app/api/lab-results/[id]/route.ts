@@ -131,19 +131,38 @@ export async function PUT(
       );
     }
 
-    const updatePayload = {
-      ...parsed.data,
-      normal_range: parsed.data.normal_range
-        ? sanitizeText(parsed.data.normal_range)
-        : parsed.data.normal_range ?? null,
-      units: parsed.data.units ? sanitizeText(parsed.data.units) : parsed.data.units ?? null,
-      notes: parsed.data.notes ? sanitizeText(parsed.data.notes) : parsed.data.notes ?? null,
-      doctor_notes: parsed.data.doctor_notes
-        ? sanitizeText(parsed.data.doctor_notes)
-        : parsed.data.doctor_notes ?? null,
+    // Allowlist of client-mutable fields. Built explicitly (NOT `...parsed.data`)
+    // so appointment_id can never be reassigned via a general edit — re-targeting
+    // the encounter is the same mis-attribution class 908331f closed on the
+    // collection route (this /[id] handler was missed). The Zod schema still
+    // accepts appointment_id (so edit forms that resend the unchanged value don't
+    // 400); it is simply never written. Only keys the client sent are applied.
+    const MUTABLE_LAB_FIELDS = [
+      "test_name",
+      "test_type",
+      "ordered_date",
+      "completed_date",
+      "results",
+      "normal_range",
+      "units",
+      "file_urls",
+      "status",
+      "notes",
+      "doctor_notes",
+    ] as const;
+
+    const updatePayload: Record<string, any> = {
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
+    for (const key of MUTABLE_LAB_FIELDS) {
+      if (key in parsed.data) updatePayload[key] = (parsed.data as any)[key];
+    }
+    for (const key of ["normal_range", "units", "notes", "doctor_notes"] as const) {
+      if (key in updatePayload) {
+        updatePayload[key] = updatePayload[key] ? sanitizeText(updatePayload[key]) : null;
+      }
+    }
 
     // @ts-ignore - supabase type inference
     const { data: labResult, error } = await supabase

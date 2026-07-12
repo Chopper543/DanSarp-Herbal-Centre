@@ -136,23 +136,38 @@ export async function PUT(
       );
     }
 
-    const updatePayload = {
-      ...parsed.data,
-      subjective: parsed.data.subjective
-        ? sanitizeText(parsed.data.subjective)
-        : parsed.data.subjective ?? null,
-      objective: parsed.data.objective
-        ? sanitizeText(parsed.data.objective)
-        : parsed.data.objective ?? null,
-      assessment: parsed.data.assessment
-        ? sanitizeText(parsed.data.assessment)
-        : parsed.data.assessment ?? null,
-      plan: parsed.data.plan
-        ? sanitizeText(parsed.data.plan)
-        : parsed.data.plan ?? null,
+    // Allowlist of client-mutable clinical fields. Built explicitly (NOT
+    // `...parsed.data`) so identity/classification stay frozen — the same
+    // mass-assignment class 908331f closed on the amendment route (this in-place
+    // /[id] PUT was missed). Dropped: appointment_id (re-targets the encounter),
+    // note_type (classification flip), is_template + template_id (flipping a note
+    // to a template hides it from the default is_template=false list). The Zod
+    // schema still accepts these (no 400 for edit forms); they are never written.
+    // Only keys the client actually sent are applied (partial update). NOTE: this
+    // handler UPDATEs in place rather than appending an amendment version — see
+    // FIXES.md §5f (in-place-UPDATE-defeats-amendment-model follow-up).
+    const MUTABLE_NOTE_FIELDS = [
+      "subjective",
+      "objective",
+      "assessment",
+      "plan",
+      "vital_signs",
+      "diagnosis_codes",
+      "attachments",
+    ] as const;
+
+    const updatePayload: Record<string, any> = {
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     };
+    for (const key of MUTABLE_NOTE_FIELDS) {
+      if (key in parsed.data) updatePayload[key] = (parsed.data as any)[key];
+    }
+    for (const key of ["subjective", "objective", "assessment", "plan"] as const) {
+      if (key in updatePayload) {
+        updatePayload[key] = updatePayload[key] ? sanitizeText(updatePayload[key]) : null;
+      }
+    }
 
     // @ts-ignore - supabase type inference
     const { data: note, error } = await supabase
