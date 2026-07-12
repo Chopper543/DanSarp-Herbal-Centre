@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { TOTP, generateSecret } from "otplib";
-import { createHmac, randomBytes as nodeRandomBytes } from "crypto";
-// @ts-ignore - base32.js doesn't have type definitions
-import { decode as base32Decode } from "base32.js";
+import { TOTP, generateSecret, NobleCryptoPlugin, ScureBase32Plugin } from "otplib";
 import QRCode from "qrcode";
 import { encryptSecret } from "@/lib/security/crypto";
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
@@ -63,20 +60,12 @@ export async function POST(request: NextRequest) {
     const serviceName = "DanSarp Herbal Centre";
     const accountName = user.email || user.id;
     
-    // Generate OTP Auth URL using TOTP instance with Node crypto
-    // @ts-ignore - otplib v13 requires crypto plugin configuration
+    // Generate OTP Auth URL using TOTP instance
     const totp = new TOTP({
       secret,
-      // @ts-ignore - supabase type inference
-      createDigest: (algorithm: string, secret: string) => {
-        const secretBuffer = Buffer.from(base32Decode(secret));
-        return createHmac(algorithm, secretBuffer).digest();
-      },
-      // @ts-ignore - supabase type inference
-      createRandomBytes: (size: number) => {
-        return Promise.resolve(nodeRandomBytes(size));
-      },
-    } as any);
+      crypto: new NobleCryptoPlugin(),
+      base32: new ScureBase32Plugin(),
+    });
     const otpAuthUrl = totp.toURI({
       label: accountName,
       issuer: serviceName,
@@ -85,19 +74,25 @@ export async function POST(request: NextRequest) {
     // Generate QR code as data URL
     const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);
 
-    // Store the secret temporarily (user needs to verify before enabling)
-    // We'll store it encrypted in the database but not enable 2FA yet
+    // Store the secret temporarily (user needs to verify before enabling).
+    // We'll store it encrypted in the database but not enable 2FA yet.
+    // .select() forces the affected rows back so a silent RLS-blocked update
+    // (0 rows, no error) can't masquerade as success.
     // @ts-ignore - Supabase type inference issue
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("users")
       // @ts-ignore - Supabase type inference issue
       .update({
         two_factor_secret: encryptSecret(secret),
       })
-      .eq("id", user.id);
+      .eq("id", user.id)
+      .select("id");
 
-    if (updateError) {
-      logger.error("Failed to store 2FA secret:", updateError);
+    if (updateError || !updatedRows || updatedRows.length === 0) {
+      logger.error(
+        "Failed to store 2FA secret:",
+        updateError ?? new Error("update affected 0 rows (likely blocked by RLS)")
+      );
       return NextResponse.json(
         { error: "Failed to generate 2FA secret" },
         { status: 500 }

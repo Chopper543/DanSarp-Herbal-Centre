@@ -16,6 +16,14 @@ The audit flagged these as *not line-by-line verified*. Confirm before building 
 
 ---
 
+## 0b. RELEASE BLOCKER — production build is broken
+
+- [~] **`next build` fails at "Collecting page data" with `ENOENT: .next/browser/default-stylesheet.css`; confirmed identical on the base branch, so pre-existing and unrelated to any 2FA work. App cannot produce a production build.**
+  - Root cause found: `lib/utils/sanitize.ts` imports `isomorphic-dompurify`, which unconditionally `require("jsdom")`s on the server. jsdom's `style-rules.js` helper does `fs.readFileSync(path.resolve(__dirname, "../../browser/default-stylesheet.css"))` at module load time. Webpack bundles it into a single server chunk, so `__dirname` resolves to the chunk's own directory instead of jsdom's real location — the relative path lands on a file Next never copies.
+  - Fix in progress on `fix/build-jsdom-tracing` (branched off `main`, not the 2FA stack): mark `isomorphic-dompurify`/`jsdom` as `serverExternalPackages` in `next.config.js` so they're `require()`d from real `node_modules` at runtime instead of bundled. Verified end-to-end: baseline build fails identically, fixed build completes 108/108 pages, prod server serves real pages, sanitizer behavior (XSS stripping) unchanged.
+
+---
+
 ## 1. RELEASE BLOCKER — 2FA bypass (do this first, standalone branch)
 
 Branch: `fix/2fa-server-binding`
@@ -52,6 +60,29 @@ Branch: `fix/2fa-server-binding`
   - Fix: on a caught error for a non-public route, fail CLOSED (redirect to
     /login, 401 for API) instead of proceeding. Weigh against lockout-on-outage;
     consider a short-lived cache / limited retry so a blip doesn't lock out staff.
+
+---
+
+## 1b. RELEASE BLOCKER — 2FA mechanism blockers, found during B1 runtime verification
+
+Found while manually driving the running app end-to-end to verify the B1 cookie
+fix (B1's own cookie/session-binding logic verified clean — see Section 1). These
+are separate, pre-existing defects in the 2FA *mechanism itself*: right now no
+one can actually enroll in or log in with 2FA at all. Not part of the B1 branch.
+
+- [ ] **otplib v13 API mismatch — every real TOTP verify throws, 2FA enrollment/login is fully broken.** **S**
+  - Files: `app/api/auth/2fa/verify/route.ts:83-92`, `app/api/auth/2fa/verify-login/route.ts:97-108`, `app/api/auth/2fa/disable/route.ts:80-89` (same construction in `app/api/auth/2fa/generate/route.ts:67-79`, which doesn't crash only because `toURI()` never touches the crypto plugin).
+  - Repro: enroll a user, submit the correct current TOTP code to `POST /api/auth/2fa/verify` → 500 `{"error":"Failed to verify 2FA code"}`. Server log: `CryptoPluginMissingError: Crypto plugin is required` at `verify/route.ts:92`.
+  - Cause: `new TOTP({secret, createDigest, createRandomBytes})` is the otplib-v12 plugin shape (matches the still-present `@otplib/plugin-crypto-js@12.0.1` dependency); the installed `otplib@13.1.1` `TOTP` class requires a `crypto`/`base32` plugin object (`.hmac()`, `.randomBytes()`, `.constantTimeEqual()`), not raw functions. Confirmed against `package-lock.json`'s locked version (13.1.1) — not an install artifact.
+
+- [ ] **RLS gap — non-admin staff can never persist a 2FA secret, permanently stuck at `/setup-2fa`.** **S–M**
+  - File: `supabase/final_schema.sql:866` — `CREATE POLICY users_update_admin ON users FOR UPDATE USING ((select is_super_admin_or_admin()));`. No self-update policy exists for a user's own row.
+  - Repro: as a `doctor`-role user, call `POST /api/auth/2fa/generate` → 200 with a QR code, but a direct DB read immediately after shows `two_factor_secret IS NULL` (RLS silently drops the update; the route doesn't `.select()` so no error surfaces to the caller or logs). The identical call as `admin` role persists correctly.
+  - Effect: combined with `proxy.ts`'s `mustEnroll` gate, every staff role in `STAFF_ROLES_REQUIRING_2FA` other than `super_admin`/`admin` (doctor, nurse, content_manager, appointment_manager, finance_manager) redirects to `/setup-2fa` and can never complete it.
+
+- Minor, noted during the same pass (not blockers):
+  - `.env.local` has a placeholder `UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url`; `/api/health` logs a connection error for it (still returns 200 — optional var). Swap for a real value or unset before deploy.
+  - 4 disposable Supabase test accounts created during B1 verification (`verify-2fa-test-*@example.invalid`) were deleted from both `auth.users` and `public.users`; confirmed zero remaining via `listUsers()` + a table scan.
 
 ---
 
@@ -103,6 +134,15 @@ Branch: `fix/transactional-patient-deletion`
 - [ ] **M3 — Doctors/nurses can't be invited.** **S** — `app/api/admin/invites/route.ts:88`. *Decision needed:* add `doctor`/`nurse` to the invite allowlist + accept flow, or document the intended clinician provisioning path.
 - [ ] **M5 — In-memory rate-limit fallback is per-instance.** **S** — `lib/rate-limit.ts:45-84`. Keep the prod assertion; ensure preview deployments handling real data also require Upstash.
 - [ ] **M6 — Webhook idempotency depends on an unverified unique constraint.** **S** — confirm the `webhook_events` unique constraint exists in the migration + add a test. (See section 0.)
+
+---
+
+## 5b. HARDENING — replace isomorphic-dompurify/jsdom with a lighter sanitizer (standalone branch, not urgent)
+
+- [ ] **Shed the full-DOM dependency and its server attack surface.** **M**
+  - `lib/utils/sanitize.ts` uses `isomorphic-dompurify`, which drags a full jsdom DOM implementation onto the server just to sanitize strings (see the build-tracing issue this caused, section 0b). A DOM emulation library is a large, security-sensitive dependency to run server-side for this.
+  - Fix: swap for a lighter server-only sanitizer (e.g. `sanitize-html`) with no DOM emulation. Re-express the current `ALLOWED_TAGS`/`ALLOWED_ATTR`/`ALLOWED_URI_REGEXP` config in the new library's terms.
+  - This is real PHI/XSS-sensitive work, not a drop-in swap: needs real XSS-payload testing (script injection, attribute injection, malformed/nested tags, dangerous URI schemes) across all 9 call sites — `app/api/{messages,clinical-notes,clinical-notes/[id],appointments,intake-forms/responses,availability,lab-results,lab-results/[id],prescriptions}/route.ts` and `app/(public)/blog/[slug]/page.tsx`. Track and test on its own branch; do not batch with the build-tracing fix (section 0b) or the 2FA work.
 
 ---
 
