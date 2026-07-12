@@ -12,6 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:db": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.db.config.js",
     "test:e2e": "playwright test",
     "validate:env": "tsx scripts/validate-env.ts",
     "validate:env:strict": "tsx scripts/validate-env.ts --strict",
@@ -61,6 +62,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@playwright/test": "^1.40.1",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^14.1.2",

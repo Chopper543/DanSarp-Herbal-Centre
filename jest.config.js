@@ -37,7 +37,10 @@ const customJestConfig = {
     "**/__tests__/**/*.[jt]s?(x)",
     "**/?(*.)+(spec|test).[jt]s?(x)",
   ],
-  testPathIgnorePatterns: ["<rootDir>/e2e/"],
+  // `.dbtest.ts` files run REAL Postgres via pglite and need
+  // --experimental-vm-modules; they run under jest.db.config.js (npm run test:db),
+  // not here — that flag breaks the otplib (@scure/base ESM) tests in this suite.
+  testPathIgnorePatterns: ["<rootDir>/e2e/", "\\.dbtest\\."],
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
