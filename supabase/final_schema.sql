@@ -857,6 +857,70 @@ BEGIN
 END;
 $$;
 
+-- Clinical records cannot be PHYSICALLY deleted, even by RLS-bypassing writers
+-- (DELETE analog of clinical_records_freeze_identity). See migration
+-- 20260711000001_clinical_block_delete.sql for full rationale. BEFORE DELETE on
+-- clinical_notes + prescriptions rejects any physical delete unless the
+-- transaction-local `app.allow_clinical_purge` flag is set — which only the gated
+-- purge_patient_clinical_data() RPC does, and only after confirming a live erasure
+-- request exists. lab_results is deferred (still has live physical-delete admin
+-- handlers + no soft-delete columns).
+CREATE OR REPLACE FUNCTION clinical_records_block_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, extensions
+AS $$
+BEGIN
+  PERFORM set_config('search_path','public,extensions',true);
+
+  IF current_setting('app.allow_clinical_purge', true) = 'on' THEN
+    RETURN OLD;
+  END IF;
+
+  RAISE EXCEPTION
+    'clinical record cannot be physically deleted: % (record %) is retained; use the soft-delete UPDATE or the gated purge RPC',
+    TG_TABLE_NAME, OLD.id
+    USING ERRCODE = 'check_violation';
+END;
+$$;
+
+-- The ONLY sanctioned physical-erasure path (right-to-be-forgotten cron).
+-- SECURITY DEFINER so it can open the block trigger + delete regardless of caller
+-- role, but it first proves a pending/processing deletion_request exists for the
+-- user (the cron flips the request to 'processing' before purging), and it is
+-- executable by service_role only.
+CREATE OR REPLACE FUNCTION purge_patient_clinical_data(p_user_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM deletion_requests
+    WHERE user_id = p_user_id
+      AND status IN ('pending','processing')
+  ) THEN
+    RAISE EXCEPTION
+      'purge_patient_clinical_data: no pending/processing deletion_request for user %',
+      p_user_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Transaction-local: opens the block trigger for THIS transaction only.
+  PERFORM set_config('app.allow_clinical_purge','on', true);
+
+  DELETE FROM clinical_notes WHERE patient_id = p_user_id;
+  DELETE FROM prescriptions  WHERE patient_id = p_user_id;
+  DELETE FROM lab_results    WHERE patient_id = p_user_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION purge_patient_clinical_data(UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION purge_patient_clinical_data(UUID) FROM anon;
+REVOKE ALL ON FUNCTION purge_patient_clinical_data(UUID) FROM authenticated;
+GRANT EXECUTE ON FUNCTION purge_patient_clinical_data(UUID) TO service_role;
+
 -- Triggers
 CREATE TRIGGER audit_users AFTER INSERT OR UPDATE OR DELETE ON users FOR EACH ROW EXECUTE FUNCTION create_audit_log();
 CREATE TRIGGER audit_appointments AFTER INSERT OR UPDATE OR DELETE ON appointments FOR EACH ROW EXECUTE FUNCTION create_audit_log();
@@ -885,6 +949,15 @@ DROP TRIGGER IF EXISTS clinical_notes_freeze_identity ON clinical_notes;
 CREATE TRIGGER clinical_notes_freeze_identity BEFORE UPDATE ON clinical_notes FOR EACH ROW EXECUTE FUNCTION clinical_records_freeze_identity();
 DROP TRIGGER IF EXISTS clinical_notes_amendment_identity ON clinical_notes;
 CREATE TRIGGER clinical_notes_amendment_identity BEFORE INSERT ON clinical_notes FOR EACH ROW EXECUTE FUNCTION clinical_notes_amendment_identity();
+
+-- Clinical record physical-delete block (FIXES.md). BEFORE DELETE on clinical_notes
+-- + prescriptions; the gated purge_patient_clinical_data() RPC is the only path
+-- that may physically delete (via the transaction-local app.allow_clinical_purge
+-- flag). lab_results deferred.
+DROP TRIGGER IF EXISTS clinical_notes_block_delete ON clinical_notes;
+CREATE TRIGGER clinical_notes_block_delete BEFORE DELETE ON clinical_notes FOR EACH ROW EXECUTE FUNCTION clinical_records_block_delete();
+DROP TRIGGER IF EXISTS prescriptions_block_delete ON prescriptions;
+CREATE TRIGGER prescriptions_block_delete BEFORE DELETE ON prescriptions FOR EACH ROW EXECUTE FUNCTION clinical_records_block_delete();
 
 CREATE TRIGGER messages_updated_at BEFORE UPDATE ON messages FOR EACH ROW EXECUTE FUNCTION update_messages_updated_at();
 CREATE TRIGGER patient_age_before_insupd BEFORE INSERT OR UPDATE ON patient_records FOR EACH ROW EXECUTE FUNCTION update_patient_age();

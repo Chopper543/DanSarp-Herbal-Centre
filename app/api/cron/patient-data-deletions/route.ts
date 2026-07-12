@@ -38,15 +38,26 @@ async function processDeletionRequest(supabase: any, request: DeletionRequest) {
     .eq("id", request.id);
 
   try {
+    // Clinical records (clinical_notes / prescriptions / lab_results) are retained
+    // at the DB layer by the clinical_records_block_delete BEFORE DELETE trigger —
+    // a raw .delete() on them is rejected. Their erasure goes through the gated
+    // purge_patient_clinical_data() RPC, which confirms this deletion_request is
+    // pending/processing (set to 'processing' above), opens the block for its own
+    // transaction, and physically deletes all three. Everything else is non-clinical
+    // and deletes directly.
+    const { error: purgeError } = await supabase.rpc("purge_patient_clinical_data", {
+      p_user_id: targetUserId,
+    });
+    if (purgeError) {
+      throw new Error(`Clinical purge failed: ${purgeError.message}`);
+    }
+
     await Promise.all([
       supabase.from("messages").delete().eq("sender_id", targetUserId),
       supabase.from("messages").delete().eq("recipient_id", targetUserId),
       supabase.from("appointment_waitlist").delete().eq("patient_id", targetUserId),
       supabase.from("health_metrics").delete().eq("patient_id", targetUserId),
       supabase.from("intake_form_responses").delete().eq("patient_id", targetUserId),
-      supabase.from("clinical_notes").delete().eq("patient_id", targetUserId),
-      supabase.from("lab_results").delete().eq("patient_id", targetUserId),
-      supabase.from("prescriptions").delete().eq("patient_id", targetUserId),
       supabase.from("appointments").delete().eq("user_id", targetUserId),
       supabase.from("payments").delete().eq("user_id", targetUserId),
       supabase.from("patient_records").delete().eq("user_id", targetUserId),
