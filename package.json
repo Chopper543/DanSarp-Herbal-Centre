@@ -12,7 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:db": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.db.config.js",
+    "test:db": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.db.config.js --runInBand",
     "test:e2e": "playwright test",
     "validate:env": "tsx scripts/validate-env.ts",
     "validate:env:strict": "tsx scripts/validate-env.ts --strict",

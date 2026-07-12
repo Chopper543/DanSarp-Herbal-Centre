@@ -164,12 +164,25 @@ Two external-behaviour assumptions introduced by `fix/webhook-event-idempotency`
 
 ---
 
+## 5e. HARDENING — refund reconciliation + second-layer idempotency (deferred from the atomicity fix)
+
+Two follow-ups deliberately deferred from `fix/refund-atomic-finalize` (which made the local writes atomic via `finalize_refund` and routes maybe-money-moved failures to `needs_reconciliation`, never `failed`). Neither is a blocker — the fix's guarantee is "every failure lands detectable and un-re-runnable," and it achieves that without these.
+
+- [ ] **Per-provider `getRefund` reconciliation query + verified Paystack `Idempotency-Key`.** **M**
+  - The residual window (accepted): provider refund succeeds, then the process crashes before `finalize_refund` records it → row is `needs_reconciliation` (or `processing` with `provider_call_attempted_at` set), which is safe (never auto-re-refunds) but resolved **manually** today, because there is no way to ask the provider "did this refund actually happen?". Build a `getRefund`/`listRefunds` query per provider (Paystack `GET /refund`, Flutterwave equivalent) keyed on `idempotency_key`/`provider_transaction_id`, and a reconciliation action/job that finalizes or clears a `needs_reconciliation` row from the provider's truth.
+  - Bundle the **verified** Paystack `Idempotency-Key` header here (as a *second* layer, not the primary guard): only after confirming from Paystack docs that `/refund` honours it. Deferred precisely because an *unverified* key is false confidence. Flutterwave has no documented key — reconciliation is its only recourse.
+- [ ] **Optional lease-sweep for stuck `processing` refunds.** **S**
+  - A crash between the intent write and finalize leaves a row `processing` with `provider_call_attempted_at` set. It is un-re-runnable (the `process` claim requires `approved`) and detectable (`WHERE status='processing' AND provider_call_attempted_at IS NOT NULL AND updated_at < now() - <lease>`), but nothing auto-transitions it. Add a small sweep (cron) that flips such stale rows to `needs_reconciliation` so they surface in the normal reconciliation queue instead of relying on an ad-hoc query. (`attempted_at IS NULL` stays safe-to-reclaim — provider was never called.)
+
+---
+
 ## 6. LOW / Housekeeping
 
 - [ ] **L1** — Delete working-tree artifacts `all-fixes.patch` and `.env.local.bak.*` from repo root.
 - [ ] **L2** — Document the `proxy.ts` middleware indirection; the whole security envelope depends on that matcher.
 - [ ] **L3** — Replace pervasive `@ts-ignore` on Supabase calls with generated `Database` types.
 - [ ] **L4** — Burn down the 730 tolerated ESLint warnings; ratchet `--max-warnings` toward 0.
+- [ ] **L5** — `phi-read-audit.test.ts` declares a global `getUserRoleMock` without module scope → cold `tsc --noEmit` reports TS2451 (redeclare). Masked in-session by the `tsconfig.tsbuildinfo` incremental cache; will surface as a CI red once Actions billing is unlocked and a cold build runs. Fix: add `export {}` to that test (own housekeeping branch, not a fix branch).
 
 ---
 
