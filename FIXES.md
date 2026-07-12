@@ -146,6 +146,24 @@ Branch: `fix/transactional-patient-deletion`
 
 ---
 
+## 5c. HARDENING — webhook processing as a single transactional RPC (option c, future)
+
+- [ ] **Ideal end-state for webhook idempotency, deferred as too heavy for the P0 fix.** **L**
+  - The P0 fix (`fix/webhook-event-idempotency`, migration `20260707000002`) uses claim-then-finalize: `acquire_webhook_event` RPC (status/attempts/lease) + an idempotent `ensureAppointmentForCompletedPayment` guarded by a partial UNIQUE index. Correctness rests on the mark-processed-only-after-full-success ordering plus that DB guard.
+  - The strictly-more-correct design is **option (c)**: do the external `verifyPayment` first (read-only, idempotent), then perform the claim + payment update + appointment insert in ONE Postgres transaction via a `SECURITY DEFINER` RPC. Any failure rolls back the claim too, so a retry always reprocesses, and the `UNIQUE(provider,event_id)` serializes concurrent duplicates at commit with zero double-processing — no lease, no attempts bookkeeping needed.
+  - Why deferred: the Supabase JS client can't run multi-statement transactions across `.from()` calls, so this requires porting the payment/appointment write path (reconcile, status transition, appointment create/link) into PL/pgSQL — a large, high-risk rewrite of money-movement logic. Disproportionate for the immediate blocker; revisit as a dedicated hardening branch.
+
+## 5d. VERIFY — assumptions the webhook idempotency fix rests on (follow-up, not blockers)
+
+Two external-behaviour assumptions introduced by `fix/webhook-event-idempotency`. Both are correct-by-design internally; they need confirmation against things OUTSIDE this repo.
+
+- [ ] **Webhook HTTP status codes changed — confirm nothing downstream keys on the old ones.** **S**
+  - The webhook endpoints now return: payment-not-found `404 → 503`; provider mismatch `401 → 409` (Paystack/FW) and `400 → 409` (ghana-rails); plus new `dead → 200` and `in_flight → 503`. Verify no monitoring/alerting rule, provider dashboard retry config, uptime check, or external/integration test asserts on the previous codes. Internal tests are updated; this is about anything we don't control.
+- [ ] **`in_flight → 503` assumes providers RETRY on 503.** **S**
+  - A concurrent duplicate that hits a fresh lease is deferred with `503`, relying on the provider re-delivering later (by which point the event is `processed`→skip or reclaimable→reprocess). Verify against **Paystack / Flutterwave / Ghana-rails** webhook retry docs that `503` is treated as retryable, not terminal. If any provider treats `503` (or `5xx`) as a terminal "give up" signal, an in-flight collision would DROP rather than defer — in that case switch that provider's in_flight response to a 2xx-with-retry-hint or a code it does re-deliver on. (Low likelihood — most treat any non-2xx as retryable — but it's the one place the fix depends on provider behaviour.)
+
+---
+
 ## 6. LOW / Housekeeping
 
 - [ ] **L1** — Delete working-tree artifacts `all-fixes.patch` and `.env.local.bak.*` from repo root.

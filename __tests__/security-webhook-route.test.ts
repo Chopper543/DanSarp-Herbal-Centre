@@ -10,11 +10,12 @@
 import crypto from "crypto";
 
 const supabaseFromMock = jest.fn();
+const supabaseRpcMock = jest.fn();
 const verifyPaymentMock = jest.fn();
 const sendEmailMock = jest.fn().mockResolvedValue(undefined);
 
 jest.mock("@/lib/supabase/service", () => ({
-  createServiceClient: () => ({ from: supabaseFromMock }),
+  createServiceClient: () => ({ from: supabaseFromMock, rpc: supabaseRpcMock }),
 }));
 jest.mock("@/lib/payments/payment-service", () => ({
   paymentService: { verifyPayment: (...args: any[]) => verifyPaymentMock(...args) },
@@ -25,6 +26,7 @@ jest.mock("@/lib/email/resend", () => ({
 
 beforeEach(() => {
   supabaseFromMock.mockReset();
+  supabaseRpcMock.mockReset();
   verifyPaymentMock.mockReset();
 });
 
@@ -84,19 +86,14 @@ describe("/api/webhooks/payments — order of operations", () => {
     expect(supabaseFromMock).not.toHaveBeenCalled();
   });
 
-  it("returns 200 dedup when webhook_events insert hits unique violation", async () => {
+  it("returns 200 dedup when acquire reports an already-processed event", async () => {
     const body = paystackBody();
     const sig = paystackSig(body);
 
-    supabaseFromMock.mockImplementation((table: string) => {
-      if (table === "webhook_events") {
-        return {
-          insert: jest.fn().mockResolvedValue({
-            error: { code: "23505", message: "dup" },
-          }),
-        };
-      }
-      throw new Error(`unexpected table access: ${table}`);
+    // acquire_webhook_event RPC says this event was already fully processed.
+    supabaseRpcMock.mockResolvedValue({
+      data: [{ result: "duplicate_processed", attempts: 1 }],
+      error: null,
     });
 
     const { POST } = await import("../app/api/webhooks/payments/route");
@@ -104,8 +101,22 @@ describe("/api/webhooks/payments — order of operations", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.duplicate).toBe(true);
-    // Specifically: payments table was never queried because dedup short-circuited.
-    expect(supabaseFromMock).toHaveBeenCalledWith("webhook_events");
+    // Acquire short-circuited: the payment was never looked up / processed.
+    expect(supabaseRpcMock).toHaveBeenCalledWith("acquire_webhook_event", expect.any(Object));
+    expect(supabaseFromMock).not.toHaveBeenCalledWith("payments");
+    expect(verifyPaymentMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 (not a dropped 200) when another worker holds the event in flight", async () => {
+    const body = paystackBody();
+    const sig = paystackSig(body);
+    supabaseRpcMock.mockResolvedValue({
+      data: [{ result: "in_flight", attempts: 1 }],
+      error: null,
+    });
+    const { POST } = await import("../app/api/webhooks/payments/route");
+    const res = await POST(makeRequest({ "x-paystack-signature": sig }, body));
+    expect(res.status).toBe(503);
     expect(supabaseFromMock).not.toHaveBeenCalledWith("payments");
   });
 });

@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { paymentService } from "@/lib/payments/payment-service";
+import { ensureAppointmentForCompletedPayment } from "@/lib/payments/ensure-appointment";
 import { logger } from "@/lib/monitoring/logger";
 import { internalError, badRequest } from "@/lib/api/errors";
+
+/**
+ * When the cron completes a payment (the webhook never arrived, or arrived and
+ * was dropped), it must ALSO guarantee the appointment — the same idempotent
+ * chokepoint the webhook uses. Best-effort here: a failure is logged but doesn't
+ * abort the batch (the DB unique guard still prevents any double-booking, and a
+ * later webhook can converge). Re-fetches the row so status='completed' is seen.
+ */
+async function ensureAppointmentBestEffort(supabase: any, paymentId: string) {
+  try {
+    const { data: fresh } = await supabase.from("payments").select("*").eq("id", paymentId).single();
+    if (fresh) await ensureAppointmentForCompletedPayment(supabase, fresh);
+  } catch (err) {
+    logger.error("expire-pending: appointment creation failed after completing payment", err);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,6 +96,8 @@ export async function POST(request: NextRequest) {
                 updated_at: new Date().toISOString(),
               })
               .eq("id", typedPayment.id);
+
+            await ensureAppointmentBestEffort(supabase, typedPayment.id);
 
             verifiedCount++;
             results.push({
@@ -157,6 +176,8 @@ export async function POST(request: NextRequest) {
               updated_at: new Date().toISOString(),
             })
             .eq("id", typedPayment.id);
+
+          await ensureAppointmentBestEffort(supabase, typedPayment.id);
 
           verifiedCount++;
           results.push({

@@ -13,7 +13,13 @@ import {
   resolveWebhookEventId,
   resolveWebhookEventType,
 } from "@/lib/payments/webhook-idempotency";
-import { claimWebhookEvent, type WebhookProvider } from "@/lib/payments/webhook-events";
+import {
+  acquireWebhookEvent,
+  markWebhookProcessed,
+  markWebhookFailed,
+  type WebhookProvider,
+} from "@/lib/payments/webhook-events";
+import { ensureAppointmentForCompletedPayment } from "@/lib/payments/ensure-appointment";
 import { reconcilePaymentAmount } from "@/lib/payments/amount-reconciliation";
 
 type DetectedProvider = Extract<WebhookProvider, "paystack" | "flutterwave">;
@@ -77,56 +83,6 @@ async function findPaymentByProviderRefs(
   return null;
 }
 
-async function createAppointmentFromPayment(supabase: any, payment: any) {
-  const metadata = payment.metadata as any;
-  if (
-    !metadata?.appointment_data ||
-    payment.appointment_id ||
-    payment.status !== "completed" ||
-    metadata.appointment_data.auto_create === false
-  ) {
-    return null;
-  }
-
-  const appointmentData = metadata.appointment_data;
-
-  try {
-    const { data: appointment, error } = await supabase
-      .from("appointments")
-      .insert({
-        user_id: payment.user_id,
-        branch_id: appointmentData.branch_id,
-        appointment_date: appointmentData.appointment_date,
-        treatment_type: appointmentData.treatment_type,
-        notes: appointmentData.notes || null,
-        status: "pending",
-      })
-      .select()
-      .single();
-
-    if (error || !appointment) {
-      logger.error("Failed to create appointment from payment", error);
-      return null;
-    }
-
-    const { error: linkError } = await supabase
-      .from("payments")
-      .update({ appointment_id: appointment.id })
-      .eq("id", payment.id);
-
-    if (linkError) {
-      await supabase.from("appointments").delete().eq("id", appointment.id);
-      logger.error("Failed to link payment to appointment", linkError);
-      return null;
-    }
-
-    return appointment;
-  } catch (error) {
-    logger.error("Error creating appointment from payment", error);
-    return null;
-  }
-}
-
 export async function POST(request: NextRequest) {
   // 1. Detect provider from request headers BEFORE touching the body or DB.
   //    Unsigned requests get a generic 401 — no DB probing surface.
@@ -182,33 +138,50 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // 5. Atomic dedup. The unique constraint on (provider, event_id) makes the
-  //    INSERT itself the gate — concurrent retries from the provider can't
-  //    both pass this check.
+  // 5. Atomic acquire (claim-or-reclaim). A row is only 'processed' after the
+  //    full path below succeeds, so a post-claim failure leaves the event
+  //    reclaimable — the provider's retry reprocesses instead of being dropped.
+  let acquire;
   try {
-    const claim = await claimWebhookEvent(supabase, {
+    acquire = await acquireWebhookEvent(supabase, {
       provider,
       eventId: webhookEventId,
       eventType: incomingEvent,
       payload: body,
     });
-    if (claim.duplicate) {
-      return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
-    }
   } catch (err) {
-    logger.error("Webhook claim failed", err);
+    logger.error("Webhook acquire failed", err);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
+  if (acquire.result === "duplicate_processed") {
+    return NextResponse.json({ received: true, duplicate: true }, { status: 200 });
+  }
+  if (acquire.result === "dead") {
+    logger.error("Webhook event exceeded max attempts; marked dead", {
+      provider,
+      event_id: webhookEventId,
+      attempts: acquire.attempts,
+    });
+    return NextResponse.json({ received: true, dead: true }, { status: 200 });
+  }
+  if (acquire.result === "in_flight") {
+    // Another worker holds a fresh lease. Defer — the provider retries later, by
+    // which time it's 'processed' (skip) or reclaimable (reprocess).
+    return NextResponse.json({ error: "Webhook already being processed" }, { status: 503 });
+  }
+  // acquire.result === "acquired" → we own the claim; process it.
 
-  // 6. Now look up the payment. By this point we know the request is signed,
-  //    the event is novel, and we have a verified transaction reference.
+  // 6. Look up the payment. Failures here mark the event failed (not processed)
+  //    so it is reprocessed on retry.
   const payment = await findPaymentByProviderRefs(supabase, [
     providerTransactionId,
     flutterwaveRef,
     flutterwaveId,
   ]);
   if (!payment) {
-    return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    // The webhook can legitimately beat the payment row; treat as retryable.
+    await markWebhookFailed(supabase, provider, webhookEventId, "payment_not_found");
+    return NextResponse.json({ error: "Payment not found" }, { status: 503 });
   }
 
   const paymentRecord = payment as any;
@@ -222,14 +195,19 @@ export async function POST(request: NextRequest) {
       payment_provider: paymentRecord.provider,
       payment_id: paymentRecord.id,
     });
-    return NextResponse.json({ error: "Provider mismatch" }, { status: 401 });
+    await markWebhookFailed(supabase, provider, webhookEventId, "provider_mismatch");
+    return NextResponse.json({ error: "Provider mismatch" }, { status: 409 });
   }
 
+  // 8. Process, then mark processed ONLY after the FULL path (incl. appointment)
+  //    succeeds. Any throw → mark failed + 5xx → provider retry reprocesses.
   try {
     await backfillPaymentFromWebhook(supabase, provider, body, paymentRecord, webhookEventId, incomingEvent);
+    await markWebhookProcessed(supabase, provider, webhookEventId);
     return NextResponse.json({ received: true }, { status: 200 });
-  } catch (err) {
+  } catch (err: any) {
     logger.error("Webhook processing failed", err);
+    await markWebhookFailed(supabase, provider, webhookEventId, err?.message ?? String(err));
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }
@@ -298,7 +276,7 @@ async function backfillPaymentFromWebhook(
           .single();
 
         if (updatedPayment) {
-          await createAppointmentFromPayment(supabase, updatedPayment);
+          await ensureAppointmentForCompletedPayment(supabase, updatedPayment);
           const userEmail = (updatedPayment as any)?.users?.email;
           if (userEmail) {
             sendEmail({
@@ -380,7 +358,7 @@ async function backfillPaymentFromWebhook(
         .single();
 
       if (updatedPayment) {
-        await createAppointmentFromPayment(supabase, updatedPayment);
+        await ensureAppointmentForCompletedPayment(supabase, updatedPayment);
         const userEmail = (updatedPayment as any)?.users?.email;
         if (userEmail) {
           sendEmail({
