@@ -15,6 +15,7 @@ function validateEnvOrThrowRuntime(options = {}) {
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     CSRF_SECRET: process.env.CSRF_SECRET,
     TWO_FA_ENC_KEY: process.env.TWO_FA_ENC_KEY,
+    TWO_FA_SESSION_SECRET: process.env.TWO_FA_SESSION_SECRET,
     PHI_FIELD_KEY: process.env.PHI_FIELD_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
   };
@@ -22,6 +23,7 @@ function validateEnvOrThrowRuntime(options = {}) {
   const minLengthKeys = new Set([
     "CSRF_SECRET",
     "TWO_FA_ENC_KEY",
+    "TWO_FA_SESSION_SECRET",
     "PHI_FIELD_KEY",
     "CRON_SECRET",
   ]);

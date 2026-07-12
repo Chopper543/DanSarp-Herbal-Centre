@@ -9,6 +9,8 @@ import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit";
 import { logAuditEvent } from "@/lib/audit/log";
 import { logger } from "@/lib/monitoring/logger";
 import { internalError } from "@/lib/api/errors";
+import { getSessionId } from "@/lib/auth/session";
+import { issueTwoFactorCookie } from "@/lib/security/two-factor-cookie";
 
 function requestInfoFrom(request: NextRequest) {
   return {
@@ -157,14 +159,22 @@ export async function POST(request: NextRequest) {
       message: "2FA verification successful",
     });
 
-    // Mark session as 2FA-verified and clear any requirement flag
-    response.cookies.set("twofa_verified", "true", {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      secure: true,
-      maxAge: 60 * 60 * 24, // 1 day
-    });
+    // Issue the server-signed, session-bound 2FA proof. The middleware trusts
+    // ONLY this HMAC cookie (never a raw value), so it cannot be forged, and
+    // binding it to the current Supabase session means it dies on logout/rotation
+    // and can't be replayed into another session.
+    const sessionId = await getSessionId(supabase);
+    if (!sessionId) {
+      logger.error("2FA verify-login: no session id available to bind proof cookie");
+      return internalError(
+        "/api/auth/2fa/verify-login",
+        new Error("missing session id"),
+        "Failed to establish 2FA session"
+      );
+    }
+    const twofaCookie = issueTwoFactorCookie(user.id, sessionId);
+    response.cookies.set(twofaCookie.name, twofaCookie.value, twofaCookie.options);
+    // Clear the legacy client-set requirement flag (no longer consulted by the gate).
     response.cookies.set("twofa_required", "", {
       httpOnly: true,
       sameSite: "lax",

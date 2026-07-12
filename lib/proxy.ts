@@ -13,6 +13,11 @@ import {
   setCsrfTokenCookie,
 } from "@/lib/security/csrf";
 import { requires2FA } from "@/lib/auth/rbac";
+import { getSessionId } from "@/lib/auth/session";
+import {
+  TWO_FA_COOKIE_NAME,
+  verifyTwoFactorCookie,
+} from "@/lib/security/two-factor-cookie";
 import type { UserRole } from "@/types";
 
 const PUBLIC_PATHS = [
@@ -117,9 +122,6 @@ export async function proxy(request: NextRequest) {
   const isMutatingMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
   let authenticatedUserId: string | null = null;
 
-  const twofaRequired = request.cookies.get("twofa_required")?.value === "true";
-  const twofaVerified = request.cookies.get("twofa_verified")?.value === "true";
-
   // Enforce 2FA for all authenticated routes (except public)
   if (!isPublicPath(pathname)) {
     try {
@@ -163,7 +165,18 @@ export async function proxy(request: NextRequest) {
           return finalizeResponse(request, NextResponse.redirect(url), ctx);
         }
 
-        // Enrolled but session hasn't completed the OTP challenge → existing
+        // "2FA satisfied" is derived ONLY from the server-signed, session-bound
+        // cookie — never from a raw client-writable value. A forged
+        // `twofa_verified=true`, or a proof minted for a different session,
+        // fails HMAC verification and is treated as unverified.
+        const sessionId = await getSessionId(supabase);
+        const twofaVerified = verifyTwoFactorCookie(
+          request.cookies.get(TWO_FA_COOKIE_NAME)?.value,
+          user.id,
+          sessionId
+        );
+
+        // Enrolled but session hasn't completed the OTP challenge →
         // redirect-to-login path.
         if (twofaEnrolled && !twofaVerified) {
           if (pathname.startsWith("/api/")) {
@@ -185,23 +198,6 @@ export async function proxy(request: NextRequest) {
     } catch {
       // Fail-safe: if we can't verify, let the existing cookie check run
     }
-  }
-
-  if (!isPublicPath(pathname) && twofaRequired && !twofaVerified) {
-    if (pathname.startsWith("/api/")) {
-      return finalizeResponse(
-        request,
-        NextResponse.json(
-          { error: "Two-factor authentication required" },
-          { status: 401 }
-        ),
-        ctx
-      );
-    }
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("twofa", "1");
-    return finalizeResponse(request, NextResponse.redirect(url), ctx);
   }
 
   // Apply protective checks to API routes

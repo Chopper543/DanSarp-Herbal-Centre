@@ -51,26 +51,26 @@ function LoginPageContent() {
           const isStaff = userRole ? STAFF_ROLES_REQUIRING_2FA.includes(userRole) : false;
 
           if (profileData.user?.two_factor_enabled) {
-            // User has 2FA enabled, require code
-            document.cookie = "twofa_required=true; path=/; SameSite=Lax; Secure";
+            // User has 2FA enabled, show the OTP form. No client-set cookie:
+            // the middleware derives "must do 2FA" from the DB, and the verified
+            // proof is issued server-side only after the OTP actually passes.
             setRequires2FA(true);
             setLoading(false);
             return;
           }
 
           // Staff role without 2FA → must enroll before reaching any other page.
-          // The middleware will enforce this regardless, but routing directly
-          // avoids a dashboard flash.
+          // The middleware enforces this from the DB; we route directly to avoid
+          // a dashboard flash. Enrollment grants no verified state on its own.
           if (isStaff) {
-            document.cookie = "twofa_verified=true; path=/; SameSite=Lax; Secure; Max-Age=86400";
             router.push("/setup-2fa?required=1");
             router.refresh();
             return;
           }
         }
 
-        // No 2FA, proceed to dashboard
-        document.cookie = "twofa_verified=true; path=/; SameSite=Lax; Secure; Max-Age=86400";
+        // No 2FA required (patient). No verified cookie needed — the gate only
+        // gates enrolled/staff sessions.
         router.push("/dashboard");
         router.refresh();
       }
@@ -107,9 +107,8 @@ function LoginPageContent() {
         throw new Error(data.error || "Invalid verification code");
       }
 
-      // 2FA verified, proceed to dashboard
-      document.cookie = "twofa_verified=true; path=/; SameSite=Lax; Secure; Max-Age=86400";
-      document.cookie = "twofa_required=; path=/; SameSite=Lax; Secure; Max-Age=0";
+      // 2FA verified. The server set the signed, session-bound proof cookie via
+      // this response's Set-Cookie; the browser stores it before we navigate.
       router.push("/dashboard");
       router.refresh();
     } catch (err: any) {
