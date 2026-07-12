@@ -1,12 +1,17 @@
 /**
  * @jest-environment node
  *
- * GREEN — the /[id] clinical PUT handlers (missed by 908331f) now build their
- * write from an explicit allowlist, so appointment_id (and, for clinical-notes/[id],
- * note_type / is_template / template_id) never reach the write payload — the same
- * mis-attribution class, now closed on the /[id] routes too. Captures the payload
- * each handler builds and asserts the frozen fields are DROPPED while a legit field
- * edit still persists.
+ * GREEN — the lab-results/[id] PUT handler (missed by 908331f) now builds its
+ * write from an explicit allowlist, so appointment_id never reaches the write
+ * payload — the same mis-attribution class, now closed on this /[id] route too.
+ * Captures the payload the handler builds and asserts the frozen field is DROPPED
+ * while a legit field edit still persists.
+ *
+ * NOTE: clinical-notes/[id] PUT was REMOVED (dead in-place path — all note edits go
+ * through the append-only amendment route, POST/PUT /api/clinical-notes; see
+ * FIXES.md §5f). Its identity/classification freeze is now covered at the DB layer
+ * by __tests__/security-clinical-immutable-trigger.dbtest.ts, so there is no /[id]
+ * PUT for clinical-notes to assert here.
  */
 export {}; // module scope
 
@@ -62,33 +67,5 @@ describe("GREEN — lab-results/[id] PUT drops appointment_id from the write", (
     const payload = captured["lab_results:update"];
     expect(payload.appointment_id).toBeUndefined(); // dropped — cannot re-target
     expect(payload.notes).toBe("edit");             // legit edit still applied
-  });
-});
-
-describe("GREEN — clinical-notes/[id] PUT drops appointment_id + note_type + is_template + template_id", () => {
-  it("frozen fields are dropped while a legit assessment edit persists", async () => {
-    existingRow = {
-      id: REC, doctor_id: DOCTOR, patient_id: "p", appointment_id: APPT_A,
-      note_type: "soap", is_template: false,
-    };
-    const { PUT } = await import("../app/api/clinical-notes/[id]/route");
-    const [req, ctx] = putReq(
-      {
-        appointment_id: APPT_B,
-        note_type: "progress",
-        is_template: true,
-        template_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-        assessment: "edit",
-      },
-      REC
-    );
-    const res = await PUT(req, ctx);
-    expect(res.status).toBe(200);
-    const payload = captured["clinical_notes:update"];
-    expect(payload.appointment_id).toBeUndefined(); // dropped — encounter frozen
-    expect(payload.note_type).toBeUndefined();       // dropped — classification frozen
-    expect(payload.is_template).toBeUndefined();      // dropped — cannot hide as template
-    expect(payload.template_id).toBeUndefined();      // dropped
-    expect(payload.assessment).toBe("edit");          // legit edit still applied
   });
 });
