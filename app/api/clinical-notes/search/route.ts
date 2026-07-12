@@ -49,6 +49,14 @@ export async function GET(request: NextRequest) {
       `subjective.ilike.%${query}%,objective.ilike.%${query}%,assessment.ilike.%${query}%,plan.ilike.%${query}%`
     );
 
+    // Default to live rows only: hide soft-deleted notes. `include_history=true`
+    // returns them for audit/legal review, matching the list route convention
+    // (clinical-notes/route.ts:159-161).
+    const includeHistory = searchParams.get("include_history") === "true";
+    if (!includeHistory) {
+      searchQuery = searchQuery.is("deleted_at", null);
+    }
+
     searchQuery = searchQuery.limit(limit).order("created_at", { ascending: false });
 
     // @ts-ignore - supabase type inference
